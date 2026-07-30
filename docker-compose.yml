@@ -24,7 +24,8 @@ services:
       - "1936:1935"   # RTMP
       - "8889:8889"   # WebRTC (WHEP/WHIP)
       - "8888:8888"   # HLS (Fallback)
-      - "8189:8189"   # WebRTC UDP
+      - "8189:8189/udp" # WebRTC ICE UDP
+      - "8189:8189/tcp" # WebRTC ICE TCP
     environment:
       - MTX_WEBRTCADDITIONALHOSTS=192.168.178.69
     volumes:

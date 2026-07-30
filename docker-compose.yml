@@ -15,4 +15,3 @@ services:
     devices:
       # Proxmox / Intel NUC GPU Passthrough for Hardware Accelerated Decoding & Transcoding
       - /dev/dri:/dev/dri
-    network_mode: host

@@ -26,8 +26,8 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
 
   const currentHost = window.location.hostname || 'localhost';
   const currentPort = window.location.port || '5000';
-  const rtmpServerUrl = `rtmp://${currentHost}:1935/live`;
-  const streamKey = `streamhub_live_${currentHost.replace(/\./g, '_')}`;
+  const rtmpServerUrl = `rtmp://${currentHost}:1936/live`;
+  const streamKey = `streamhub_live`;
 
   useEffect(() => {
     if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });

@@ -1,20 +1,22 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Radio, Camera, Mic, MicOff, RefreshCw, Square, ArrowLeft, Heart, MessageSquare, Send, Copy, CheckCircle2, ShieldCheck, Monitor, Smartphone, Key } from 'lucide-react';
+import { Radio, Camera, Mic, MicOff, RefreshCw, Square, ArrowLeft, Heart, MessageSquare, Send, Copy, CheckCircle2, ShieldCheck, Monitor, Smartphone, Lock } from 'lucide-react';
 
 export default function TikTokLiveStudio({ onBack, onStreamStarted, onStreamEnded }) {
-  const [activeTab, setActiveTab] = useState('phone'); // 'phone' or 'obs'
+  const [activeTab, setActiveTab] = useState('phone');
   const [streamTitle, setStreamTitle] = useState('🔴 TikTok Live Stream vom Handy');
   const [isStreaming, setIsStreaming] = useState(false);
-  const [facingMode, setFacingMode] = useState('user'); // Default front camera for TikTok style
+  const [cameraActive, setCameraActive] = useState(false);
+  const [facingMode, setFacingMode] = useState('user');
   const [isMuted, setIsMuted] = useState(false);
   const [streamDuration, setStreamDuration] = useState(0);
   const [viewerCount, setViewerCount] = useState(1);
   const [likeCount, setLikeCount] = useState(12);
   const [floatingHearts, setFloatingHearts] = useState([]);
+  const [cameraError, setCameraError] = useState(null);
 
   // Live Chat
   const [chatMessages, setChatMessages] = useState([
-    { id: 'c1', user: 'System', text: 'Willkommen im TikTok-Style Live Studio! 🔥' }
+    { id: 'c1', user: 'System', text: 'Willkommen im TikTok Live Studio! 🔥' }
   ]);
   const [chatText, setChatText] = useState('');
 
@@ -33,46 +35,55 @@ export default function TikTokLiveStudio({ onBack, onStreamStarted, onStreamEnde
   const rtmpServerUrl = `rtmp://${currentHost}:1935/live`;
   const streamKey = `streamhub_live_${currentHost.replace(/\./g, '_')}`;
 
-  // Camera Setup
-  const initCamera = async () => {
+  // iOS Safari Requirement: Must be called directly inside user tap gesture handler!
+  const requestCameraAccess = async (targetFacingMode = facingMode) => {
+    setCameraError(null);
     try {
       if (mediaStreamRef.current) {
         mediaStreamRef.current.getTracks().forEach((t) => t.stop());
       }
 
       if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        return;
+        throw new Error(
+          'iOS Safari Sicherheitsbeschränkung: Für den Kamera-Live-Zugriff benötigt dein iPhone eine HTTPS-Verbindung. Öffne die Seite über https:// oder nutze den OBS-Modus!'
+        );
       }
 
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode, width: { ideal: 720 }, height: { ideal: 1280 } },
+      // iOS Safari compatible constraints
+      let constraints = {
+        video: { facingMode: targetFacingMode },
         audio: true,
-      });
+      };
+
+      let stream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(constraints);
+      } catch (e) {
+        // Fallback for simple constraints
+        stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
+      }
 
       mediaStreamRef.current = stream;
+
       if (videoPreviewRef.current) {
         videoPreviewRef.current.srcObject = stream;
+        // iOS Safari critical attributes
+        videoPreviewRef.current.setAttribute('playsinline', 'true');
+        videoPreviewRef.current.setAttribute('muted', 'true');
+        await videoPreviewRef.current.play().catch(() => {});
       }
+
+      setCameraActive(true);
     } catch (err) {
-      console.warn('Camera stream error:', err);
+      console.error('iOS Camera access error:', err);
+      setCameraError(err.message || 'Kamera-Zugriff vom iOS-System verweigert.');
     }
   };
 
-  useEffect(() => {
-    if (activeTab === 'phone') {
-      initCamera();
-    }
-    return () => {
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
-      }
-      if (wsRef.current) wsRef.current.close();
-      if (timerRef.current) clearInterval(timerRef.current);
-    };
-  }, [facingMode, activeTab]);
-
   const toggleCamera = () => {
-    setFacingMode((prev) => (prev === 'user' ? 'environment' : 'user'));
+    const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(newFacingMode);
+    requestCameraAccess(newFacingMode);
   };
 
   const toggleMute = () => {
@@ -95,7 +106,7 @@ export default function TikTokLiveStudio({ onBack, onStreamStarted, onStreamEnde
 
   const startLiveStream = () => {
     if (!mediaStreamRef.current) {
-      alert('Kamera wird geladen... Bitte erlaube den Kamera-Zugriff!');
+      alert('Bitte tippe zuerst auf "Kamera Freigeben"!');
       return;
     }
 
@@ -119,7 +130,7 @@ export default function TikTokLiveStudio({ onBack, onStreamStarted, onStreamEnde
 
         const mediaRecorder = new MediaRecorder(mediaStreamRef.current, {
           mimeType,
-          videoBitsPerSecond: 3000000,
+          videoBitsPerSecond: 2500000,
         });
 
         mediaRecorderRef.current = mediaRecorder;
@@ -130,7 +141,7 @@ export default function TikTokLiveStudio({ onBack, onStreamStarted, onStreamEnde
           }
         };
 
-        mediaRecorder.start(400); // 400ms low latency frames
+        mediaRecorder.start(400);
         setIsStreaming(true);
         setStreamDuration(0);
 
@@ -205,7 +216,7 @@ export default function TikTokLiveStudio({ onBack, onStreamStarted, onStreamEnde
             }`}
           >
             <Smartphone className="w-3.5 h-3.5" />
-            <span>Handy Kamera</span>
+            <span>Handy Kamera (iOS)</span>
           </button>
           <button
             onClick={() => setActiveTab('obs')}
@@ -235,6 +246,31 @@ export default function TikTokLiveStudio({ onBack, onStreamStarted, onStreamEnde
               className="absolute inset-0 w-full h-full object-cover"
             />
             <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/60 pointer-events-none" />
+
+            {/* iOS User Gesture Trigger Banner if Camera Not Active */}
+            {!cameraActive && (
+              <div className="absolute inset-0 bg-black/90 z-30 flex flex-col items-center justify-center p-6 text-center space-y-4">
+                <Camera className="w-12 h-12 text-red-500 animate-bounce" />
+                <h3 className="text-base font-bold text-white">Handy Kamera Freischalten</h3>
+                <p className="text-xs text-gray-300 max-w-xs leading-relaxed">
+                  iOS Safari verlangt ein einmaliges Antippen, um Mikrofon und Kamera freizugeben.
+                </p>
+                
+                {cameraError ? (
+                  <div className="p-3 rounded bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-mono">
+                    {cameraError}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => requestCameraAccess()}
+                    className="py-3 px-6 rounded-xl bg-gradient-to-r from-red-600 to-pink-600 text-white font-bold text-sm shadow-xl shadow-red-600/40 hover:scale-105 transition-all cursor-pointer flex items-center gap-2"
+                  >
+                    <Camera className="w-4 h-4" />
+                    <span>📷 KAMERA FREIGEBEN (iOS TAP)</span>
+                  </button>
+                )}
+              </div>
+            )}
 
             {/* Top Stream Overlay Bar */}
             <div className="relative z-10 flex items-center justify-between text-white text-xs font-semibold">
@@ -285,7 +321,8 @@ export default function TikTokLiveStudio({ onBack, onStreamStarted, onStreamEnde
                 {!isStreaming ? (
                   <button
                     onClick={startLiveStream}
-                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-red-600 via-pink-600 to-red-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-red-600/40 hover:brightness-110 transition-all cursor-pointer"
+                    disabled={!cameraActive}
+                    className="flex-1 py-3 rounded-xl bg-gradient-to-r from-red-600 via-pink-600 to-red-500 text-white font-bold text-sm flex items-center justify-center gap-2 shadow-xl shadow-red-600/40 hover:brightness-110 transition-all cursor-pointer disabled:opacity-50"
                   >
                     <Radio className="w-5 h-5 animate-pulse" />
                     <span>🔴 TIKTOK LIVE STARTEN</span>
@@ -423,19 +460,6 @@ export default function TikTokLiveStudio({ onBack, onStreamStarted, onStreamEnde
                 </button>
               </div>
             </div>
-          </div>
-
-          <div className="p-4 rounded-lg bg-blue-500/10 border border-blue-500/20 text-xs text-blue-300 space-y-2">
-            <div className="font-bold flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4 text-cyan-400" />
-              Anleitung für OBS Studio:
-            </div>
-            <ol className="list-decimal list-inside space-y-1 text-[11px] text-gray-300">
-              <li>Öffne OBS Studio &rarr; Einstellungen &rarr; Stream.</li>
-              <li>Wähle bei Plattform Benutzerdefiniert (Custom).</li>
-              <li>Füge die Server URL und den Stream-Schlüssel oben ein.</li>
-              <li>Klicke in OBS auf &quot;Stream starten&quot; &rarr; Dein Live-Stream erscheint sofort in StreamHub!</li>
-            </ol>
           </div>
         </div>
       )}

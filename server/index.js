@@ -8,6 +8,7 @@ import http from 'http';
 import https from 'https';
 import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
+import NodeMediaServer from 'node-media-server';
 import { ensureCertsExist } from './generate-cert.js';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -302,6 +303,42 @@ function broadcastViewerCount() {
   const count = liveViewers.size + 1;
   broadcastToAll({ type: 'viewers', count });
 }
+
+// RTMP SERVER ENGINE (FOR OBS STUDIO STREAMS)
+const nmsConfig = {
+  rtmp: {
+    port: 1935,
+    chunk_size: 60000,
+    gop_cache: true,
+    ping: 30,
+    ping_timeout: 60
+  },
+  http: {
+    port: 8000,
+    allow_origin: '*'
+  }
+};
+
+const nms = new NodeMediaServer(nmsConfig);
+nms.run();
+
+nms.on('postPublish', (id, StreamPath, args) => {
+  console.log(`[RTMP] OBS Stream started on path: ${StreamPath}`);
+  activeLiveStream = {
+    id: 'live-obs',
+    title: '🔴 OBS Live Stream',
+    uploader: 'OBS Studio',
+    isLive: true,
+    startedAt: new Date().toISOString(),
+    views: 1,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
+  };
+});
+
+nms.on('donePublish', (id, StreamPath, args) => {
+  console.log(`[RTMP] OBS Stream ended: ${StreamPath}`);
+  activeLiveStream = null;
+});
 
 function finishLiveStream(fileWriteStream, filename) {
   if (!activeLiveStream) return;

@@ -17,9 +17,10 @@ RUN npm ci --only=production
 COPY --from=builder /app/dist ./dist
 COPY server ./server
 
-# Expose HTTP and HTTPS ports
+# Expose HTTP, HTTPS, and RTMP (OBS) ports
 EXPOSE 5000
 EXPOSE 5443
+EXPOSE 1935
 
 ENV PORT=5000
 ENV HTTPS_PORT=5443

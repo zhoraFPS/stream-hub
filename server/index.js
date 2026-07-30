@@ -358,10 +358,13 @@ setInterval(async () => {
     const res = await fetch('http://mediamtx:9997/v3/paths/list');
     if (res.ok) {
       const data = await res.json();
-      const hasLiveStream = data.items && data.items.some(item => item.ready);
+      
+      // Handle items whether it's an array or an object (map)
+      const itemsList = Array.isArray(data.items) ? data.items : Object.values(data.items || {});
+      const hasLiveStream = itemsList.some(item => item.ready);
       
       if (hasLiveStream && !activeLiveStream) {
-        console.log(`[MediaMTX] OBS Stream detected as active.`);
+        console.log(`[MediaMTX] OBS Stream detected as active. Paths:`, itemsList.map(i => i.name));
         activeLiveStream = {
           id: 'live-obs',
           title: '🔴 OBS Live Stream',
@@ -376,9 +379,11 @@ setInterval(async () => {
         activeLiveStream = null;
         liveViewers.clear();
       }
+    } else {
+      console.error(`[MediaMTX Polling] HTTP Error: ${res.status}`);
     }
   } catch (err) {
-    // MediaMTX might not be reachable if running locally without docker, ignore silently
+    console.error(`[MediaMTX Polling Error] ${err.message}`);
   }
 }, 2000);
 

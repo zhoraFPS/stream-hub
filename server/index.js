@@ -349,25 +349,38 @@ app.get('/api/live/status', (req, res) => {
   });
 });
 
-app.post('/api/internal/obs-start', (req, res) => {
-  console.log(`[Webhook] OBS Stream started via MediaMTX`);
-  activeLiveStream = {
-    id: 'live-obs',
-    title: '🔴 OBS Live Stream',
-    uploader: 'OBS Studio',
-    isLive: true,
-    startedAt: new Date().toISOString(),
-    views: 1,
-    thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
-  };
-  res.sendStatus(200);
-});
+// Poll MediaMTX API to check if an OBS stream is active
+setInterval(async () => {
+  // If a phone stream is currently active, do not overwrite it with OBS status
+  if (activeLiveStream && activeLiveStream.id !== 'live-obs') return;
 
-app.post('/api/internal/obs-stop', (req, res) => {
-  console.log(`[Webhook] OBS Stream ended via MediaMTX`);
-  activeLiveStream = null;
-  res.sendStatus(200);
-});
+  try {
+    const res = await fetch('http://mediamtx:9997/v3/paths/list');
+    if (res.ok) {
+      const data = await res.json();
+      const hasLiveStream = data.items && data.items.some(item => item.ready);
+      
+      if (hasLiveStream && !activeLiveStream) {
+        console.log(`[MediaMTX] OBS Stream detected as active.`);
+        activeLiveStream = {
+          id: 'live-obs',
+          title: '🔴 OBS Live Stream',
+          uploader: 'OBS Studio',
+          isLive: true,
+          startedAt: new Date().toISOString(),
+          views: 1,
+          thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
+        };
+      } else if (!hasLiveStream && activeLiveStream && activeLiveStream.id === 'live-obs') {
+        console.log(`[MediaMTX] OBS Stream ended.`);
+        activeLiveStream = null;
+        liveViewers.clear();
+      }
+    }
+  } catch (err) {
+    // MediaMTX might not be reachable if running locally without docker, ignore silently
+  }
+}, 2000);
 
 app.get('/api/system/info', (req, res) => {
   const ip = getLocalIp();

@@ -28,5 +28,4 @@ services:
       - "8189:8189"   # WebRTC UDP
     environment:
       - MTX_WEBRTCADDITIONALHOSTS=192.168.178.69
-      - MTX_RUNONPUBLISH=curl -X POST http://stream-hub:5000/api/internal/obs-start
-      - MTX_RUNONPUBLISHDONE=curl -X POST http://stream-hub:5000/api/internal/obs-stop
+      - MTX_API=yes

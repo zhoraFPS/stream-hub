@@ -6,8 +6,6 @@ webrtcAdditionalHosts:
 
 authInternalUsers:
   - user: any
-    pass:
-    ips: []
     permissions:
       - action: api
       - action: read

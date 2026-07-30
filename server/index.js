@@ -190,11 +190,22 @@ if (fs.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));
 }
 
-// REAL-TIME WEBSOCKET LIVE STREAMING ENGINE
+// REAL-TIME WEBSOCKET LIVE STREAMING ENGINE & CHAT BROADCASTER
 const wssHttp = new WebSocketServer({ server: httpServer });
 let activeLiveStream = null;
+let publisherSocket = null;
 let liveViewers = new Set();
 let liveChunks = [];
+
+function broadcastToAll(message) {
+  const jsonStr = typeof message === 'string' ? message : JSON.stringify(message);
+  if (publisherSocket && publisherSocket.readyState === 1) {
+    publisherSocket.send(jsonStr);
+  }
+  liveViewers.forEach((v) => {
+    if (v.readyState === 1) v.send(jsonStr);
+  });
+}
 
 function setupWebSocket(wssInstance) {
   wssInstance.on('connection', (ws, req) => {
@@ -202,6 +213,7 @@ function setupWebSocket(wssInstance) {
 
     if (url.includes('/live/publish')) {
       console.log('📱 Live Stream Publisher Connected');
+      publisherSocket = ws;
       let streamFilename = `live-rec-${Date.now()}.webm`;
       let streamFilePath = path.join(VIDEOS_DIR, streamFilename);
       let fileWriteStream = fs.createWriteStream(streamFilePath);
@@ -233,25 +245,25 @@ function setupWebSocket(wssInstance) {
               console.log(`Live Stream Started: ${activeLiveStream.title}`);
             } else if (data.type === 'stop') {
               finishLiveStream(fileWriteStream, streamFilename);
+            } else if (data.type === 'chat') {
+              broadcastToAll(data);
             }
           } catch (e) {}
         }
       });
 
       ws.on('close', () => {
+        publisherSocket = null;
         finishLiveStream(fileWriteStream, streamFilename);
       });
 
     } else if (url.includes('/live/watch')) {
       liveViewers.add(ws);
       
-      // Fast Live Edge Catchup: Send Header Chunk (liveChunks[0]) + last 10 chunks for instant sync!
+      // Send header chunk + last 10 chunks for fast startup
       if (activeLiveStream && liveChunks.length > 0) {
         if (ws.readyState === 1) {
-          // Always send header chunk first for decoder init
           ws.send(liveChunks[0]);
-          
-          // Send last 10 chunks to jump straight to live edge
           const recentChunks = liveChunks.slice(-10);
           recentChunks.forEach((chunk, i) => {
             if (i > 0 && ws.readyState === 1) {
@@ -260,6 +272,15 @@ function setupWebSocket(wssInstance) {
           });
         }
       }
+
+      ws.on('message', (message) => {
+        try {
+          const data = JSON.parse(message.toString());
+          if (data.type === 'chat') {
+            broadcastToAll(data);
+          }
+        } catch (e) {}
+      });
       
       broadcastViewerCount();
       ws.on('close', () => {
@@ -279,11 +300,7 @@ if (httpsServer) {
 
 function broadcastViewerCount() {
   const count = liveViewers.size + 1;
-  wssHttp.clients.forEach((client) => {
-    if (client.readyState === 1) {
-      client.send(JSON.stringify({ type: 'viewers', count }));
-    }
-  });
+  broadcastToAll({ type: 'viewers', count });
 }
 
 function finishLiveStream(fileWriteStream, filename) {

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Radio, Camera, Mic, MicOff, RefreshCw, Square, ArrowLeft, Heart, MessageSquare, Send, Copy, CheckCircle2, ShieldCheck, Monitor, Smartphone } from 'lucide-react';
+import { Radio, Camera, Mic, MicOff, RefreshCw, Square, ArrowLeft, Send, Copy, CheckCircle2, Monitor, Smartphone, MessageSquare } from 'lucide-react';
 
 export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded }) {
   const [activeTab, setActiveTab] = useState('phone');
@@ -10,12 +10,11 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
   const [isMuted, setIsMuted] = useState(false);
   const [streamDuration, setStreamDuration] = useState(0);
   const [viewerCount, setViewerCount] = useState(1);
-  const [likeCount, setLikeCount] = useState(0);
   const [cameraError, setCameraError] = useState(null);
 
-  // Live Chat
+  // Live Chat Messages
   const [chatMessages, setChatMessages] = useState([
-    { id: 'c1', user: 'System', text: 'Willkommen im Live Studio!' }
+    { id: 'c1', user: 'System', text: 'Live Studio gestartet. Nachrichten erscheinen hier live!' }
   ]);
   const [chatText, setChatText] = useState('');
 
@@ -90,10 +89,6 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
     }
   };
 
-  const handleLikeClick = () => {
-    setLikeCount((prev) => prev + 1);
-  };
-
   const startLiveStream = () => {
     if (!mediaStreamRef.current) {
       alert('Bitte tippe zuerst auf "Kamera Freigeben"!');
@@ -118,9 +113,10 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
         if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
         if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4';
 
+        // 1000ms chunks for smooth 30/60 fps video streaming
         const mediaRecorder = new MediaRecorder(mediaStreamRef.current, {
           mimeType,
-          videoBitsPerSecond: 2500000,
+          videoBitsPerSecond: 3000000,
         });
 
         mediaRecorderRef.current = mediaRecorder;
@@ -131,7 +127,7 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
           }
         };
 
-        mediaRecorder.start(400);
+        mediaRecorder.start(1000);
         setIsStreaming(true);
         setStreamDuration(0);
 
@@ -145,7 +141,14 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'viewers') setViewerCount(msg.count);
+          if (msg.type === 'viewers') {
+            setViewerCount(msg.count);
+          } else if (msg.type === 'chat') {
+            setChatMessages((prev) => [
+              ...prev,
+              { id: 'c-' + Date.now(), user: msg.user, text: msg.text }
+            ]);
+          }
         } catch (e) {}
       };
 
@@ -174,10 +177,13 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
   const handleSendChat = (e) => {
     e.preventDefault();
     if (!chatText.trim()) return;
-    setChatMessages((prev) => [
-      ...prev,
-      { id: 'c-' + Date.now(), user: 'Ich', text: chatText.trim() }
-    ]);
+
+    const chatData = { type: 'chat', user: 'Streamer', text: chatText.trim() };
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify(chatData));
+    } else {
+      setChatMessages((prev) => [...prev, { id: 'c-' + Date.now(), user: 'Ich', text: chatText.trim() }]);
+    }
     setChatText('');
   };
 
@@ -220,7 +226,7 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
       </div>
 
       {activeTab === 'phone' ? (
-        /* Minimalist Live Camera Studio */
+        /* Minimalist Live Camera Studio with Floating Chat Overlay */
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
           
           <div className="lg:col-span-2 relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-white/10 flex flex-col justify-between p-4">
@@ -271,8 +277,18 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
               </div>
             </div>
 
+            {/* Floating Live Chat Overlay on Camera Screen */}
+            <div className="relative z-10 space-y-2 mt-auto mb-2 max-h-36 overflow-y-auto pr-2 scrollbar-none">
+              {chatMessages.map((c) => (
+                <div key={c.id} className="inline-block bg-black/70 backdrop-blur-md px-3 py-1 rounded text-xs text-white border border-white/10 max-w-[90%] shadow-lg">
+                  <span className="font-bold text-blue-400 mr-1.5">{c.user}:</span>
+                  <span>{c.text}</span>
+                </div>
+              ))}
+            </div>
+
             {/* Bottom Controls */}
-            <div className="relative z-10 space-y-3 mt-auto">
+            <div className="relative z-10 space-y-3">
               <div className="flex items-center gap-2 pt-2">
                 {!isStreaming ? (
                   <button
@@ -313,9 +329,12 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
 
           </div>
 
-          {/* Settings Sidebar */}
+          {/* Live Chat Control Panel */}
           <div className="glass-panel p-5 space-y-4">
-            <h3 className="font-bold text-xs uppercase tracking-wider text-white border-b border-white/10 pb-3 font-mono">Live Einstellungen</h3>
+            <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-white border-b border-white/10 pb-3 font-mono">
+              <MessageSquare className="w-4 h-4 text-blue-400" />
+              <span>Live Chat Overlay</span>
+            </div>
 
             <div className="space-y-2">
               <label className="text-xs text-gray-300 block">Stream Titel</label>
@@ -327,6 +346,23 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
                 className="w-full bg-black/50 border border-white/15 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
               />
             </div>
+
+            {/* Streamer Live Chat Input */}
+            <form onSubmit={handleSendChat} className="space-y-2 pt-2 border-t border-white/10">
+              <label className="text-xs text-gray-300 block">Chat Nachricht absenden</label>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={chatText}
+                  onChange={(e) => setChatText(e.target.value)}
+                  placeholder="Antworten..."
+                  className="flex-1 bg-black/50 border border-white/15 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
+                />
+                <button type="submit" className="btn-primary text-xs px-3">
+                  <Send className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            </form>
           </div>
 
         </div>

@@ -12,18 +12,18 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
   const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
   const [comments, setComments] = useState([
-    { id: 'c1', user: 'Admin', text: '🔴 Live-Stream gestartet!', date: new Date().toISOString() }
+    { id: 'c1', user: 'System', text: 'Willkommen im Live-Stream!', date: new Date().toISOString() }
   ]);
   const [commentText, setCommentText] = useState('');
   const [commentUser, setCommentUser] = useState('');
 
-  // Auto seek to the live edge (<100ms latency)
-  const jumpToLiveEdge = () => {
+  // Smooth playback seek (allows 1.5 - 2s natural buffer delay for butter-smooth 60fps)
+  const jumpToLiveEdgeIfNeeded = () => {
     if (videoRef.current && videoRef.current.buffered.length > 0) {
       const liveEnd = videoRef.current.buffered.end(videoRef.current.buffered.length - 1);
-      // If playback is lagging behind by more than 0.4 seconds, jump straight to live edge!
-      if (liveEnd - videoRef.current.currentTime > 0.4) {
-        videoRef.current.currentTime = Math.max(0, liveEnd - 0.1);
+      // Only seek if latency falls behind by more than 3.5 seconds
+      if (liveEnd - videoRef.current.currentTime > 3.5) {
+        videoRef.current.currentTime = Math.max(0, liveEnd - 1.5);
       }
     }
   };
@@ -36,8 +36,6 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
         const nextBuffer = bufferQueueRef.current.shift();
         sb.appendBuffer(nextBuffer);
 
-        // Auto seek to live edge and start playback
-        jumpToLiveEdge();
         if (videoRef.current && videoRef.current.paused) {
           videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
         }
@@ -67,7 +65,7 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
 
         sourceBuffer.addEventListener('updateend', () => {
           processQueue();
-          jumpToLiveEdge();
+          jumpToLiveEdgeIfNeeded();
         });
       } catch (err) {
         console.error('MediaSource error:', err);
@@ -87,7 +85,14 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
       if (typeof event.data === 'string') {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'viewers') setViewerCount(msg.count);
+          if (msg.type === 'viewers') {
+            setViewerCount(msg.count);
+          } else if (msg.type === 'chat') {
+            setComments((prev) => [
+              { id: 'c-' + Date.now(), user: msg.user, text: msg.text, date: new Date().toISOString() },
+              ...prev
+            ]);
+          }
         } catch (e) {}
       } else if (event.data instanceof Blob) {
         event.data.arrayBuffer().then((buffer) => {
@@ -106,7 +111,7 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
     if (videoRef.current) {
       videoRef.current.play().then(() => {
         setIsPlaying(true);
-        jumpToLiveEdge();
+        jumpToLiveEdgeIfNeeded();
       }).catch(() => {});
     }
   };
@@ -114,10 +119,20 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
   const handleCommentSubmit = (e) => {
     e.preventDefault();
     if (!commentText.trim()) return;
-    setComments((prev) => [
-      { id: 'c-' + Date.now(), user: commentUser || 'Zuschauer', text: commentText.trim(), date: new Date().toISOString() },
-      ...prev
-    ]);
+
+    const user = commentUser.trim() || 'Zuschauer';
+    const text = commentText.trim();
+
+    // Send real-time chat via WebSocket to streamer phone & all viewers!
+    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ type: 'chat', user, text }));
+    } else {
+      setComments((prev) => [
+        { id: 'c-' + Date.now(), user, text, date: new Date().toISOString() },
+        ...prev
+      ]);
+    }
+
     setCommentText('');
   };
 
@@ -133,7 +148,7 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
 
         <div className="flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-white font-mono text-xs font-bold shadow-lg animate-pulse">
           <Radio className="w-3.5 h-3.5" />
-          <span>🔴 ECHTER LIVE STREAM</span>
+          <span>🔴 LIVE STREAM (FLÜSSIG 60 FPS)</span>
         </div>
       </div>
 
@@ -152,7 +167,6 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
               className="w-full h-full object-contain"
             />
 
-            {/* Manual Play Trigger for Mobile / Safari if Autoplay Blocked */}
             {!isPlaying && (
               <button
                 onClick={handleManualPlay}
@@ -161,14 +175,14 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
                 <div className="w-16 h-16 rounded-full bg-[#0055b8] text-white flex items-center justify-center shadow-2xl animate-pulse">
                   <Play className="w-8 h-8 fill-white ml-1" />
                 </div>
-                <span className="text-xs font-bold text-white uppercase tracking-wider">LIVE EDGE ABPIELEN</span>
+                <span className="text-xs font-bold text-white uppercase tracking-wider">LIVE STREAM ABSPIELEN</span>
               </button>
             )}
 
             {/* Live Indicator Overlay */}
             <div className="absolute top-3 left-3 z-10 flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-white text-xs font-mono font-bold border border-red-400">
               <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
-              <span>LIVE EDGE (&lt;100ms)</span>
+              <span>LIVE BROADCAST</span>
               <span>•</span>
               <span className="flex items-center gap-1">
                 <Users className="w-3.5 h-3.5" />
@@ -200,7 +214,7 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
               </div>
 
               <div className="px-3 py-1 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
-                Latenz: &lt; 100ms
+                Puffer-Latenz: ~1.5 Sekunden (Flüssige 60 FPS)
               </div>
             </div>
 
@@ -214,7 +228,7 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
         <div className="glass-panel p-4 flex flex-col h-[500px]">
           <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-white border-b border-white/10 pb-3 mb-3 font-mono">
             <MessageSquare className="w-4 h-4 text-red-500 animate-pulse" />
-            <span>Live Chat</span>
+            <span>Echtzeit Live Chat</span>
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-2 pr-1">
@@ -237,7 +251,7 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
             <div className="flex gap-2">
               <input
                 type="text"
-                placeholder="Nachricht schreiben..."
+                placeholder="Nachricht an den Streamer auf dem Handy..."
                 value={commentText}
                 onChange={(e) => setCommentText(e.target.value)}
                 className="flex-1 bg-black/40 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-blue-500"

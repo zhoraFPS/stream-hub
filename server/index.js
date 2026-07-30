@@ -190,11 +190,11 @@ if (fs.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));
 }
 
-// REAL-TIME WEBSOCKET LIVE STREAMING ENGINE
+// REAL-TIME WEBSOCKET LIVE STREAMING ENGINE (WITH HEAVY BUFFER CATCHUP & QUEUE)
 const wssHttp = new WebSocketServer({ server: httpServer });
 let activeLiveStream = null;
 let liveViewers = new Set();
-let liveChunks = [];
+let liveChunks = []; // Keeps all video chunks for live stream catchup
 
 function setupWebSocket(wssInstance) {
   wssInstance.on('connection', (ws, req) => {
@@ -211,6 +211,7 @@ function setupWebSocket(wssInstance) {
           fileWriteStream.write(message);
           liveChunks.push(message);
 
+          // Broadcast to all active viewers immediately
           liveViewers.forEach((viewer) => {
             if (viewer.readyState === 1) {
               viewer.send(message);
@@ -244,9 +245,16 @@ function setupWebSocket(wssInstance) {
 
     } else if (url.includes('/live/watch')) {
       liveViewers.add(ws);
+      
+      // Instantly send accumulated stream chunks to late-joining viewer so video decodes without freezing!
       if (activeLiveStream && liveChunks.length > 0) {
-        ws.send(liveChunks[0]);
+        liveChunks.forEach((chunk) => {
+          if (ws.readyState === 1) {
+            ws.send(chunk);
+          }
+        });
       }
+      
       broadcastViewerCount();
       ws.on('close', () => {
         liveViewers.delete(ws);
@@ -285,7 +293,7 @@ function finishLiveStream(fileWriteStream, filename) {
   const newVod = {
     id: vodId,
     title: `🔴 Aufzeichnung: ${liveTitle}`,
-    description: 'Automatische Live-Stream Aufzeichnung vom Handy.',
+    description: 'Automatische Live-Stream Aufzeichnung.',
     category: 'Gaming',
     duration: 30,
     views: 1,

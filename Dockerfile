@@ -10,22 +10,12 @@ RUN npm run build
 FROM node:20-alpine
 WORKDIR /app
 
-# Install runtime dependencies including openssl for SSL TLS
-RUN apk add --no-cache openssl
-
 COPY package*.json ./
 RUN npm ci --only=production
 
 # Copy built frontend assets & server files
 COPY --from=builder /app/dist ./dist
 COPY server ./server
-
-# Pre-generate valid SSL certificates for HTTPS
-RUN mkdir -p server/certs && \
-    openssl req -x509 -newkey rsa:2048 -nodes \
-    -keyout server/certs/server.key \
-    -out server/certs/server.crt \
-    -days 3650 -subj "/CN=StreamHub"
 
 # Expose HTTP and HTTPS ports
 EXPOSE 5000

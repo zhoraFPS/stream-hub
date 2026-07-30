@@ -19,7 +19,7 @@ export function ensureCertsExist() {
     try {
       const key = fs.readFileSync(KEY_PATH);
       const cert = fs.readFileSync(CERT_PATH);
-      if (key.length > 50 && cert.length > 50 && cert.toString().includes('BEGIN CERTIFICATE')) {
+      if (key.length > 50 && cert.length > 50) {
         return { key, cert };
       }
     } catch (e) {}
@@ -37,9 +37,7 @@ export function ensureCertsExist() {
       cert: fs.readFileSync(CERT_PATH),
     };
   } catch (err) {
-    console.error('OpenSSL generation failed, creating JS fallback cert:', err.message);
-    
-    // JS Fallback using standard openssl fallback or return null
+    console.error('OpenSSL generation error:', err.message);
     return null;
   }
 }

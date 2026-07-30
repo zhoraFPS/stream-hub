@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+.pnpm-store
+
+# Production build output
+dist
+
+# Local data & uploads (exclude video files from git repo)
+server/data/uploads/*
+!server/data/uploads/.gitkeep
+
+# Environment variables
+.env
+.env.local
+
+# Logs
+*.log
+npm-debug.log*
+
+# System files
+.DS_Store
+Thumbs.db

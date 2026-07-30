@@ -1,0 +1,75 @@
+{
+  "videos": [
+    {
+      "id": "demo-big-buck-bunny",
+      "title": "Big Buck Bunny - 4K 60fps Open Source Master",
+      "description": "Klassisches Open-Source Testvideo für High-Bitrate Low Latency Streaming Tests auf deinem Intel NUC.",
+      "category": "Movies",
+      "duration": 596,
+      "views": 1420,
+      "likes": 128,
+      "dislikes": 2,
+      "uploader": "Blender Foundation",
+      "createdAt": "2026-07-27T11:47:23.385Z",
+      "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80",
+      "isExternal": true,
+      "tags": [
+        "4K",
+        "Benchmark",
+        "Blender",
+        "60fps"
+      ],
+      "comments": [
+        {
+          "id": "c1",
+          "user": "Proxmox Admin",
+          "text": "Läuft mit <20ms Seek-Zeit auf dem NUC!",
+          "date": "2026-07-30T11:47:23.386Z"
+        }
+      ]
+    },
+    {
+      "id": "demo-sintel",
+      "title": "Sintel Open Movie - Ultra HD Demo",
+      "description": "VOD Test-Stream für Proxmox VE Hardware-Beschleunigung mit Intel QuickSync QSV/VAAPI.",
+      "category": "Tutorials",
+      "duration": 888,
+      "views": 890,
+      "likes": 95,
+      "dislikes": 0,
+      "uploader": "Intel NUC Server",
+      "createdAt": "2026-07-29T11:47:23.386Z",
+      "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1578632767115-351597cf2477?w=800&q=80",
+      "isExternal": true,
+      "tags": [
+        "Intel NUC",
+        "Low Latency",
+        "Proxmox"
+      ],
+      "comments": []
+    },
+    {
+      "id": "demo-tears-of-steel",
+      "title": "Tears of Steel - Sci-Fi 4K HDR Local Stream",
+      "description": "High-speed local network VOD streaming demo across 1Gbps LAN.",
+      "category": "Gaming",
+      "duration": 734,
+      "views": 2310,
+      "likes": 240,
+      "dislikes": 4,
+      "uploader": "StreamHub Node",
+      "createdAt": "2026-07-30T06:47:23.386Z",
+      "videoUrl": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4",
+      "thumbnailUrl": "https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&q=80",
+      "isExternal": true,
+      "tags": [
+        "Sci-Fi",
+        "LAN",
+        "Hardware Transcode"
+      ],
+      "comments": []
+    }
+  ]
+}

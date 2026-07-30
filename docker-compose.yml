@@ -18,13 +18,14 @@ services:
       - /dev/dri:/dev/dri
 
   mediamtx:
-    image: bluenviron/mediamtx:latest
-    container_name: mediamtx
-    restart: unless-stopped
+    image: bluenviron/mediamtx:latest-ffmpeg
+    restart: always
     ports:
-      - "1936:1935"   # RTMP (Geändert von 1935 auf 1936)
+      - "1936:1935"   # RTMP
       - "8889:8889"   # WebRTC (WHEP/WHIP)
       - "8888:8888"   # HLS (Fallback)
       - "8189:8189"   # WebRTC UDP
-    volumes:
-      - ./server/mediamtx.yml:/mediamtx.yml
+    environment:
+      - MTX_WEBRTCADDITIONALHOSTS=192.168.178.69
+      - MTX_RUNONPUBLISH=wget -qO- --post-data="" http://stream-hub:5000/api/internal/obs-start
+      - MTX_RUNONPUBLISHDONE=wget -qO- --post-data="" http://stream-hub:5000/api/internal/obs-stop

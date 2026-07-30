@@ -349,43 +349,33 @@ app.get('/api/live/status', (req, res) => {
   });
 });
 
-// Poll MediaMTX API to check if an OBS stream is active
-setInterval(async () => {
-  // If a phone stream is currently active, do not overwrite it with OBS status
-  if (activeLiveStream && activeLiveStream.id !== 'live-obs') return;
-
-  try {
-    const res = await fetch('http://mediamtx:9997/v3/paths/list');
-    if (res.ok) {
-      const data = await res.json();
-      
-      // Handle items whether it's an array or an object (map)
-      const itemsList = Array.isArray(data.items) ? data.items : Object.values(data.items || {});
-      const hasLiveStream = itemsList.some(item => item.ready);
-      
-      if (hasLiveStream && !activeLiveStream) {
-        console.log(`[MediaMTX] OBS Stream detected as active. Paths:`, itemsList.map(i => i.name));
-        activeLiveStream = {
-          id: 'live-obs',
-          title: '🔴 OBS Live Stream',
-          uploader: 'OBS Studio',
-          isLive: true,
-          startedAt: new Date().toISOString(),
-          views: 1,
-          thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
-        };
-      } else if (!hasLiveStream && activeLiveStream && activeLiveStream.id === 'live-obs') {
-        console.log(`[MediaMTX] OBS Stream ended.`);
-        activeLiveStream = null;
-        liveViewers.clear();
-      }
-    } else {
-      console.error(`[MediaMTX Polling] HTTP Error: ${res.status}`);
-    }
-  } catch (err) {
-    console.error(`[MediaMTX Polling Error] ${err.message}`);
+app.post('/api/internal/obs-start', (req, res) => {
+  // Only overwrite if it's not a phone stream
+  if (activeLiveStream && activeLiveStream.id !== 'live-obs') {
+    return res.sendStatus(200);
   }
-}, 2000);
+  
+  console.log(`[Webhook] OBS Stream started via MediaMTX`);
+  activeLiveStream = {
+    id: 'live-obs',
+    title: '🔴 OBS Live Stream',
+    uploader: 'OBS Studio',
+    isLive: true,
+    startedAt: new Date().toISOString(),
+    views: 1,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
+  };
+  res.sendStatus(200);
+});
+
+app.post('/api/internal/obs-stop', (req, res) => {
+  if (activeLiveStream && activeLiveStream.id === 'live-obs') {
+    console.log(`[Webhook] OBS Stream ended via MediaMTX`);
+    activeLiveStream = null;
+    liveViewers.clear();
+  }
+  res.sendStatus(200);
+});
 
 app.get('/api/system/info', (req, res) => {
   const ip = getLocalIp();

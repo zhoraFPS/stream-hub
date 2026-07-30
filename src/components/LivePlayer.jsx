@@ -42,7 +42,7 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
 
     if (isObs) {
       // OBS Stream Playback via Native WebRTC (WHEP from MediaMTX)
-      const whepUrl = `http://${host}:8889/live/whep`; // Assuming stream is just "live", or fallback
+      const whepUrl = `http://${host}:8889/live/streamhub_live/whep`;
 
       const setupWebRTC = async () => {
         pc = new RTCPeerConnection();
@@ -61,20 +61,11 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
           const offer = await pc.createOffer();
           await pc.setLocalDescription(offer);
 
-          // Try 'live' first, if fails try 'live/streamhub_live' (in case user used stream key)
-          let response = await fetch(whepUrl, {
+          const response = await fetch(whepUrl, {
             method: 'POST',
             headers: { 'Content-Type': 'application/sdp' },
             body: offer.sdp
           });
-
-          if (!response.ok) {
-            response = await fetch(`http://${host}:8889/live/streamhub_live/whep`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/sdp' },
-              body: offer.sdp
-            });
-          }
 
           if (response.ok) {
             const answerSdp = await response.text();

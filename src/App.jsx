@@ -5,7 +5,7 @@ import Sidebar from './components/Sidebar';
 import VideoCard from './components/VideoCard';
 import VideoPlayer from './components/VideoPlayer';
 import LivePlayer from './components/LivePlayer';
-import TikTokLiveStudio from './components/TikTokLiveStudio';
+import LiveStudioPage from './components/LiveStudioPage';
 import UploadModal from './components/UploadModal';
 import QRCodeModal from './components/QRCodeModal';
 import { PlaySquare, Radio, RefreshCw, AlertCircle, Camera, Users } from 'lucide-react';
@@ -86,7 +86,7 @@ export default function App() {
     const interval = setInterval(() => {
       fetchVideos(true);
       fetchLiveStatus();
-    }, 3000);
+    }, 4000);
     return () => clearInterval(interval);
   }, [selectedCategory, searchQuery]);
 
@@ -193,7 +193,7 @@ export default function App() {
 
   return (
     <ErrorBoundary>
-      <div className="min-h-screen flex flex-col bg-[#07090e] text-gray-100">
+      <div className="min-h-screen flex flex-col bg-[#030814] text-gray-100">
         
         {/* Navigation Header */}
         <Navbar
@@ -207,7 +207,7 @@ export default function App() {
         {/* Subpage Router */}
         {currentPage === 'studio' ? (
           <main className="flex-1">
-            <TikTokLiveStudio
+            <LiveStudioPage
               onBack={() => navigateTo('home')}
               onStreamStarted={() => fetchLiveStatus()}
               onStreamEnded={() => {
@@ -256,18 +256,18 @@ export default function App() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-white font-mono text-xs font-bold animate-pulse">
                       <Radio className="w-3.5 h-3.5" />
-                      <span>🔴 TIKTOK-STYLE LIVE STREAM AKTIV</span>
+                      <span>🔴 LIVE STREAM AKTIV</span>
                     </div>
 
                     <span className="text-xs text-gray-300 font-mono flex items-center gap-1.5 bg-black/60 px-3 py-1 rounded border border-white/10">
-                      <Users className="w-3.5 h-3.5 text-cyan-400" />
+                      <Users className="w-3.5 h-3.5 text-blue-400" />
                       {liveStatus.viewers} Zuschauer
                     </span>
                   </div>
 
                   <div className="space-y-1">
                     <h2 className="text-xl font-bold text-white tracking-tight">
-                      {liveStatus.stream?.title || '🔴 Live-Stream vom Handy'}
+                      {liveStatus.stream?.title || '🔴 Live-Stream'}
                     </h2>
                     <p className="text-xs text-red-300">
                       Klicke hier, um den Live-Kamerastream direkt anzusehen!
@@ -277,25 +277,25 @@ export default function App() {
               ) : (
                 <div className="glass-panel p-5 rounded-xl border border-blue-500/20 bg-gradient-to-r from-blue-950/30 via-black to-black flex flex-wrap items-center justify-between gap-4">
                   <div className="space-y-1 max-w-xl">
-                    <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-xs font-mono font-semibold border border-blue-500/30">
-                      <Radio className="w-3.5 h-3.5 text-cyan-400" />
-                      Proxmox TikTok-Style Live & OBS Studio Hub
+                    <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-blue-500/10 text-blue-300 text-xs font-mono font-semibold border border-blue-500/30 uppercase">
+                      <Radio className="w-3.5 h-3.5 text-blue-400" />
+                      Proxmox Broadcast Hub
                     </div>
-                    <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-                      FiveM StreamHub • Live Studio
+                    <h1 className="text-xl sm:text-2xl font-black text-white tracking-wider uppercase">
+                      StreamHub • Live & VOD Center
                     </h1>
                     <p className="text-xs text-gray-300">
-                      Streame live mit deinem Smartphone (TikTok-Style) oder verbinde OBS Studio per Stream-Schlüssel.
+                      Minimalistische Low-Latency VOD & Live-Streaming Plattform für deinen Proxmox NUC Server.
                     </p>
                   </div>
 
                   <div className="flex gap-2">
                     <button
                       onClick={() => navigateTo('studio')}
-                      className="py-2.5 px-4 rounded-md bg-gradient-to-r from-red-600 to-pink-600 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-red-600/30 hover:brightness-110 transition-all cursor-pointer"
+                      className="btn-primary text-xs flex items-center gap-2"
                     >
                       <Camera className="w-4 h-4" />
-                      <span>🔴 TIKTOK LIVE STUDIO ÖFFNEN</span>
+                      <span>🔴 LIVE STUDIO ÖFFNEN</span>
                     </button>
                   </div>
                 </div>
@@ -304,9 +304,9 @@ export default function App() {
               {/* Video Grid Header */}
               <div className="space-y-3">
                 <div className="flex items-center justify-between">
-                  <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <h2 className="text-xs font-bold text-white uppercase tracking-wider font-mono flex items-center gap-2">
                     <span>{selectedCategory === 'All' ? 'Alle VOD-Aufzeichnungen' : selectedCategory}</span>
-                    <span className="text-xs text-gray-500 font-mono font-normal">({videos.length} VODs)</span>
+                    <span className="text-gray-500 font-normal">({videos.length} VODs)</span>
                   </h2>
                   <button
                     onClick={() => fetchVideos()}
@@ -376,7 +376,7 @@ export default function App() {
 
         {/* Footer */}
         <footer className="border-t border-white/5 py-3 text-center text-xs text-gray-500 font-mono mt-auto">
-          FiveM StreamHub TikTok Live & OBS Studio Hub • Proxmox VE
+          StreamHub Minimalist Edition • Proxmox VE
         </footer>
 
       </div>

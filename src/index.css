@@ -1,41 +1,31 @@
-@import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap');
 
 :root {
-  --font-main: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
-  --font-mono: 'JetBrains Mono', monospace;
+  --font-main: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 
-  /* FiveM Glass & Geometry Tokens */
-  --bg-main: #07090e;
-  --bg-glass: rgba(10, 13, 20, 0.92);
-  --bg-glass-hover: rgba(15, 20, 30, 0.96);
-  --border-color: rgba(255, 255, 255, 0.08);
-  --border-color-hover: rgba(255, 255, 255, 0.18);
-  --border-radius: 8px;
+  /* VfL Bochum Minimalist Palette */
+  --bg-main: #030814;
+  --bg-surface: #0a1024;
+  --bg-surface-hover: #121a36;
+  --bg-glass: rgba(10, 16, 36, 0.92);
 
-  --text-title: #ffffff;
-  --text-message: #94a3b8;
-  --text-time: #64748b;
+  --border-color: rgba(255, 255, 255, 0.1);
+  --border-color-hover: rgba(255, 255, 255, 0.25);
+  --border-radius: 6px;
 
-  /* FiveM Theme Type Accents */
-  --color-primary: #3b82f6;
-  --color-primary-bg: rgba(59, 130, 246, 0.1);
+  --text-main: #ffffff;
+  --text-muted: #94a3b8;
+  --text-dim: #64748b;
 
-  --color-success: #10b981;
-  --color-success-bg: rgba(16, 185, 129, 0.1);
+  /* VfL Royal Blue Accents */
+  --vfl-blue: #0055b8;
+  --vfl-blue-dark: #002b66;
+  --vfl-blue-hover: #0066e6;
+  --vfl-white: #ffffff;
+  --vfl-gray: #e2e8f0;
 
-  --color-error: #ef4444;
-  --color-error-bg: rgba(239, 68, 68, 0.1);
-
-  --color-warning: #f59e0b;
-  --color-warning-bg: rgba(245, 158, 11, 0.1);
-
-  --color-phone: #8b5cf6;
-  --color-phone-bg: rgba(139, 92, 246, 0.1);
-
-  --color-cyan: #06b6d4;
-  --color-cyan-bg: rgba(6, 182, 212, 0.1);
-
-  --shadow-main: 0 12px 30px rgba(0, 0, 0, 0.6);
+  --shadow-main: 0 10px 30px rgba(0, 0, 0, 0.7);
 }
 
 * {
@@ -48,13 +38,9 @@
 
 body {
   background-color: var(--bg-main);
-  background: 
-    radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.04) 0%, transparent 60%),
-    linear-gradient(rgba(255, 255, 255, 0.012) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.012) 1px, transparent 1px);
-  background-size: 100% 100%, 30px 30px, 30px 30px;
-  color: #f8fafc;
+  color: var(--text-main);
   min-height: 100vh;
+  line-height: 1.5;
 }
 
 /* Custom Scrollbars */
@@ -73,11 +59,11 @@ body {
   background: rgba(255, 255, 255, 0.3);
 }
 
-/* FiveM Glass Card Spec */
+/* Minimalist Glass Card Spec */
 .glass-panel {
   background: var(--bg-glass);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   box-shadow: var(--shadow-main);
@@ -87,42 +73,43 @@ body {
   position: sticky;
   top: 0;
   z-index: 50;
-  background: rgba(7, 9, 14, 0.92);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
+  background: rgba(3, 8, 20, 0.95);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
   border-bottom: 1px solid var(--border-color);
 }
 
-/* FiveM Button Styling */
+/* Minimalist VfL Buttons */
 .btn-primary {
-  background: var(--color-primary-bg);
+  background: var(--vfl-blue);
   color: #ffffff;
-  font-weight: 600;
+  font-weight: 700;
   font-size: 0.85rem;
-  padding: 0.55rem 1.1rem;
+  padding: 0.6rem 1.25rem;
   border-radius: var(--border-radius);
-  border: 1px solid rgba(59, 130, 246, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.15);
   cursor: pointer;
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
-  box-shadow: 0 4px 15px rgba(59, 130, 246, 0.15);
+  transition: all 0.2s ease;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
 }
 
 .btn-primary:hover {
-  background: rgba(59, 130, 246, 0.25);
-  border-color: #3b82f6;
+  background: var(--vfl-blue-hover);
+  border-color: #ffffff;
   transform: translateY(-1px);
-  box-shadow: 0 6px 20px rgba(59, 130, 246, 0.3);
+  box-shadow: 0 4px 15px rgba(0, 85, 184, 0.4);
 }
 
 .btn-secondary {
-  background: rgba(255, 255, 255, 0.03);
-  color: #f8fafc;
-  font-weight: 500;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--text-main);
+  font-weight: 600;
   font-size: 0.85rem;
-  padding: 0.55rem 1.1rem;
+  padding: 0.6rem 1.25rem;
   border-radius: var(--border-radius);
   border: 1px solid var(--border-color);
   cursor: pointer;
@@ -133,14 +120,14 @@ body {
 }
 
 .btn-secondary:hover {
-  background: rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.1);
   border-color: var(--border-color-hover);
 }
 
-/* Input Fields */
+/* Minimalist Search Bar */
 .input-search {
   width: 100%;
-  background: rgba(0, 0, 0, 0.4);
+  background: rgba(0, 0, 0, 0.5);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   padding: 0.55rem 1rem 0.55rem 2.4rem;
@@ -151,26 +138,25 @@ body {
 }
 
 .input-search:focus {
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.2);
+  border-color: var(--vfl-blue);
+  box-shadow: 0 0 0 2px rgba(0, 85, 184, 0.3);
 }
 
-/* Video Card Styling */
+/* Minimalist Video Card */
 .video-card {
-  background: var(--bg-glass);
-  backdrop-filter: blur(14px);
+  background: var(--bg-surface);
   border: 1px solid var(--border-color);
   border-radius: var(--border-radius);
   overflow: hidden;
   cursor: pointer;
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s ease;
   display: flex;
   flex-direction: column;
 }
 
 .video-card:hover {
-  transform: translateY(-3px);
-  background: var(--bg-glass-hover);
+  transform: translateY(-2px);
+  background: var(--bg-surface-hover);
   border-color: var(--border-color-hover);
   box-shadow: var(--shadow-main);
 }
@@ -190,19 +176,19 @@ body {
 }
 
 .video-card:hover .video-card-thumb img {
-  transform: scale(1.04);
+  transform: scale(1.03);
 }
 
-/* FiveM HUD Category Pills */
+/* Category Pills */
 .category-pill {
-  padding: 0.5rem 1rem;
+  padding: 0.55rem 1.1rem;
   border-radius: var(--border-radius);
   font-size: 0.8rem;
   font-weight: 600;
   cursor: pointer;
-  background: rgba(255, 255, 255, 0.02);
+  background: rgba(255, 255, 255, 0.03);
   border: 1px solid var(--border-color);
-  color: var(--text-message);
+  color: var(--text-muted);
   display: flex;
   align-items: center;
   gap: 0.6rem;
@@ -212,48 +198,41 @@ body {
 }
 
 .category-pill:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.08);
   color: #ffffff;
-  border-color: var(--border-color-hover);
 }
 
 .category-pill.active {
-  background: var(--color-primary-bg);
+  background: var(--vfl-blue);
   color: #ffffff;
-  border-color: var(--color-primary);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
+  border-color: var(--vfl-blue);
+  font-weight: 700;
 }
 
-/* Badge System */
+/* Badges */
 .badge-duration {
   position: absolute;
   bottom: 0.5rem;
   right: 0.5rem;
   padding: 0.15rem 0.4rem;
-  border-radius: 4px;
-  background: rgba(7, 9, 14, 0.9);
+  border-radius: 3px;
+  background: rgba(3, 8, 20, 0.9);
   color: #ffffff;
   font-size: 0.7rem;
   font-family: var(--font-mono);
   font-weight: 600;
-  border: 1px solid rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.15);
 }
 
 .badge-tag {
   padding: 0.15rem 0.5rem;
-  border-radius: 4px;
+  border-radius: 3px;
   font-size: 0.68rem;
   font-family: var(--font-mono);
   font-weight: 500;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid var(--border-color);
-  color: var(--text-message);
-}
-
-.badge-local {
-  background: var(--color-success-bg);
-  color: var(--color-success);
-  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--text-muted);
 }
 
 /* Utilities */
@@ -330,11 +309,9 @@ body {
 .text-gray-300 { color: #cbd5e1; }
 .text-gray-400 { color: #94a3b8; }
 .text-gray-500 { color: #64748b; }
-.text-cyan-400 { color: var(--color-cyan); }
-.text-purple-400 { color: var(--color-phone); }
-.text-red-400 { color: var(--color-error); }
-.text-emerald-400 { color: var(--color-success); }
-.text-amber-400 { color: var(--color-warning); }
+.text-blue-400 { color: #3b82f6; }
+.text-red-400 { color: #ef4444; }
+.text-emerald-400 { color: #10b981; }
 
 .player-slider {
   -webkit-appearance: none;
@@ -353,7 +330,7 @@ body {
   width: 12px;
   height: 12px;
   border-radius: 50%;
-  background: var(--color-primary);
-  box-shadow: 0 0 8px rgba(59, 130, 246, 0.8);
+  background: var(--vfl-blue);
+  box-shadow: 0 0 8px rgba(0, 85, 184, 0.8);
   cursor: pointer;
 }

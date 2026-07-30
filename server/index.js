@@ -16,6 +16,17 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 
+// Global CORS headers for media streaming
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 // File paths setup
 const DATA_DIR = path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
@@ -95,38 +106,38 @@ function seedSampleVideos() {
     const sampleVideos = [
       {
         id: 'demo-big-buck-bunny',
-        title: 'Big Buck Bunny - 4K 60fps Open Source Master',
-        description: 'Klassisches Open-Source Testvideo für High-Bitrate Low Latency Streaming Tests auf deinem Intel NUC.',
+        title: 'Big Buck Bunny - 4K 60fps FiveM Stream Test',
+        description: 'Open-Source Benchmark Video for FiveM HUD Low-Latency VOD Streaming on Proxmox Intel NUC.',
         category: 'Movies',
-        duration: 596, // seconds
+        duration: 596,
         views: 1420,
         likes: 128,
         dislikes: 2,
-        uploader: 'Blender Foundation',
+        uploader: 'FiveM StreamHub Node',
         createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
         videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
         thumbnailUrl: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80',
         isExternal: true,
-        tags: ['4K', 'Benchmark', 'Blender', '60fps'],
+        tags: ['FiveM', '4K', 'Benchmark', 'Proxmox'],
         comments: [
-          { id: 'c1', user: 'Proxmox Admin', text: 'Läuft mit <20ms Seek-Zeit auf dem NUC!', date: new Date().toISOString() }
+          { id: 'c1', user: 'FiveM Admin', text: 'Läuft mit <20ms Seek-Zeit im FiveM NUC Net!', date: new Date().toISOString() }
         ]
       },
       {
         id: 'demo-sintel',
-        title: 'Sintel Open Movie - Ultra HD Demo',
-        description: 'VOD Test-Stream für Proxmox VE Hardware-Beschleunigung mit Intel QuickSync QSV/VAAPI.',
+        title: 'Sintel Ultra HD - Hardware Accel Test',
+        description: 'VOD Stream für Proxmox VE Hardware-Beschleunigung mit Intel QuickSync QSV/VAAPI.',
         category: 'Tutorials',
         duration: 888,
         views: 890,
         likes: 95,
         dislikes: 0,
-        uploader: 'Intel NUC Server',
+        uploader: 'Intel NUC Core',
         createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
         videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
         thumbnailUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=800&q=80',
         isExternal: true,
-        tags: ['Intel NUC', 'Low Latency', 'Proxmox'],
+        tags: ['Intel NUC', 'FiveM UI', 'QSV'],
         comments: []
       },
       {
@@ -138,7 +149,7 @@ function seedSampleVideos() {
         views: 2310,
         likes: 240,
         dislikes: 4,
-        uploader: 'StreamHub Node',
+        uploader: 'FiveM Server Node',
         createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
         videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
         thumbnailUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&q=80',
@@ -166,7 +177,7 @@ if (fs.existsSync(DIST_DIR)) {
 
 // API Routes
 
-// System info endpoint (local network IP, port)
+// System info endpoint
 app.get('/api/system/info', (req, res) => {
   const ip = getLocalIp();
   res.json({
@@ -182,7 +193,7 @@ app.get('/api/system/info', (req, res) => {
   });
 });
 
-// GET /api/videos - List all videos with search & category filters
+// GET /api/videos - List all videos
 app.get('/api/videos', (req, res) => {
   const { search, category } = req.query;
   const db = readDB();
@@ -202,12 +213,11 @@ app.get('/api/videos', (req, res) => {
     );
   }
 
-  // Sort by newest
   videos.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
   res.json(videos);
 });
 
-// GET /api/videos/:id - Single video metadata & view increment
+// GET /api/videos/:id - Single video metadata
 app.get('/api/videos/:id', (req, res) => {
   const db = readDB();
   const video = db.videos.find((v) => v.id === req.params.id);
@@ -216,14 +226,13 @@ app.get('/api/videos/:id', (req, res) => {
     return res.status(404).json({ error: 'Video not found' });
   }
 
-  // Increment view count
   video.views = (video.views || 0) + 1;
   writeDB(db);
 
   res.json(video);
 });
 
-// LOW LATENCY STREAMING ENDPOINT: HTTP 206 Partial Content
+// FIXED LOW LATENCY HTTP 206 STREAMING ENDPOINT
 app.get('/api/videos/:id/stream', (req, res) => {
   const db = readDB();
   const video = db.videos.find((v) => v.id === req.params.id);
@@ -232,7 +241,6 @@ app.get('/api/videos/:id/stream', (req, res) => {
     return res.status(404).json({ error: 'Video not found' });
   }
 
-  // Handle external video URL fallback
   if (video.isExternal && video.videoUrl) {
     return res.redirect(video.videoUrl);
   }
@@ -247,11 +255,21 @@ app.get('/api/videos/:id/stream', (req, res) => {
   const fileSize = stat.size;
   const range = req.headers.range;
 
+  // Determine mime type
+  const ext = path.extname(videoPath).toLowerCase();
+  let mimeType = 'video/mp4';
+  if (ext === '.webm') mimeType = 'video/webm';
+  if (ext === '.mkv') mimeType = 'video/x-matroska';
+  if (ext === '.mov') mimeType = 'video/quicktime';
+
   if (range) {
-    // Parse Range Header e.g. "bytes=32324-65432"
     const parts = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10);
-    const end = parts[1] ? parseInt(parts[1], 10) : fileSize - 1;
+    const start = parseInt(parts[0], 10) || 0;
+    let end = parts[1] && parts[1].trim() !== '' ? parseInt(parts[1], 10) : fileSize - 1;
+
+    if (isNaN(end) || end >= fileSize) {
+      end = fileSize - 1;
+    }
 
     if (start >= fileSize) {
       res.status(416).send(`Requested range not satisfiable\n${start} >= ${fileSize}`);
@@ -264,8 +282,9 @@ app.get('/api/videos/:id/stream', (req, res) => {
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       'Accept-Ranges': 'bytes',
       'Content-Length': chunksize,
-      'Content-Type': video.mimeType || 'video/mp4',
+      'Content-Type': mimeType,
       'Cache-Control': 'no-cache, no-store, must-revalidate',
+      'Access-Control-Allow-Origin': '*',
     };
 
     res.writeHead(206, head);
@@ -275,10 +294,11 @@ app.get('/api/videos/:id/stream', (req, res) => {
       console.error('Stream error:', err);
     });
   } else {
-    // Full file headers if client doesn't send Range
     const head = {
       'Content-Length': fileSize,
-      'Content-Type': video.mimeType || 'video/mp4',
+      'Content-Type': mimeType,
+      'Accept-Ranges': 'bytes',
+      'Access-Control-Allow-Origin': '*',
     };
     res.writeHead(200, head);
     fs.createReadStream(videoPath).pipe(res);
@@ -307,7 +327,6 @@ app.post(
       if (req.files && req.files['thumbnail']) {
         thumbnailUrl = `/uploads/thumbnails/${req.files['thumbnail'][0].filename}`;
       } else if (customThumbnailData && customThumbnailData.startsWith('data:image')) {
-        // Save base64 snapshot captured on client side
         const base64Data = customThumbnailData.replace(/^data:image\/\w+;base64,/, '');
         const thumbFilename = `thumb-${Date.now()}.jpg`;
         const thumbPath = path.join(THUMBNAILS_DIR, thumbFilename);
@@ -327,7 +346,7 @@ app.post(
         views: 0,
         likes: 0,
         dislikes: 0,
-        uploader: 'Proxmox Local User',
+        uploader: 'FiveM Local User',
         createdAt: new Date().toISOString(),
         filename: videoFile.filename,
         videoUrl: `/api/videos/${videoId}/stream`,
@@ -335,14 +354,14 @@ app.post(
         mimeType: videoFile.mimetype,
         sizeBytes: videoFile.size,
         isExternal: false,
-        tags: tags ? tags.split(',').map((t) => t.trim()) : ['Local VOD'],
+        tags: tags ? tags.split(',').map((t) => t.trim()) : ['FiveM VOD'],
         comments: [],
       };
 
       db.videos.unshift(newVideo);
       writeDB(db);
 
-      console.log(`Uploaded new VOD: ${newVideo.title} (${(newVideo.sizeBytes / (1024 * 1024)).toFixed(1)} MB)`);
+      console.log(`Uploaded new VOD: ${newVideo.title}`);
       res.status(201).json(newVideo);
     } catch (err) {
       console.error('Upload failed:', err);
@@ -373,7 +392,7 @@ app.post('/api/videos/:id/comment', (req, res) => {
 
   const comment = {
     id: 'c-' + Date.now(),
-    user: user || 'Local User',
+    user: user || 'FiveM User',
     text,
     date: new Date().toISOString(),
   };
@@ -394,7 +413,6 @@ app.delete('/api/videos/:id', (req, res) => {
 
   const [deletedVideo] = db.videos.splice(index, 1);
 
-  // If local file, delete from disk
   if (!deletedVideo.isExternal && deletedVideo.filename) {
     const videoPath = path.join(VIDEOS_DIR, deletedVideo.filename);
     if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
@@ -415,11 +433,10 @@ app.listen(PORT, '0.0.0.0', () => {
   const localIp = getLocalIp();
   console.log(`
   ======================================================
-  🎬 StreamHub Local Low-Latency VOD Streaming Server
+  🎬 FiveM StreamHub Low-Latency VOD Server
   ======================================================
   Local Machine:   http://localhost:${PORT}
   Local Network:   http://${localIp}:${PORT}
-  Proxmox Intel NUC Hardware Accelerated Ready!
   ======================================================
   `);
 });

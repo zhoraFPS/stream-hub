@@ -5,10 +5,10 @@ import Sidebar from './components/Sidebar';
 import VideoCard from './components/VideoCard';
 import VideoPlayer from './components/VideoPlayer';
 import LivePlayer from './components/LivePlayer';
-import LiveStudioPage from './components/LiveStudioPage';
+import TikTokLiveStudio from './components/TikTokLiveStudio';
 import UploadModal from './components/UploadModal';
 import QRCodeModal from './components/QRCodeModal';
-import { PlaySquare, Radio, RefreshCw, AlertCircle, Camera, Users, Upload } from 'lucide-react';
+import { PlaySquare, Radio, RefreshCw, AlertCircle, Camera, Users } from 'lucide-react';
 
 export default function App() {
   const [currentPage, setCurrentPage] = useState('home'); // 'home', 'watch', 'studio', 'live'
@@ -86,7 +86,7 @@ export default function App() {
     const interval = setInterval(() => {
       fetchVideos(true);
       fetchLiveStatus();
-    }, 4000);
+    }, 3000);
     return () => clearInterval(interval);
   }, [selectedCategory, searchQuery]);
 
@@ -207,7 +207,7 @@ export default function App() {
         {/* Subpage Router */}
         {currentPage === 'studio' ? (
           <main className="flex-1">
-            <LiveStudioPage
+            <TikTokLiveStudio
               onBack={() => navigateTo('home')}
               onStreamStarted={() => fetchLiveStatus()}
               onStreamEnded={() => {
@@ -256,7 +256,7 @@ export default function App() {
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-white font-mono text-xs font-bold animate-pulse">
                       <Radio className="w-3.5 h-3.5" />
-                      <span>🔴 LIVE STREAM AKTIV</span>
+                      <span>🔴 TIKTOK-STYLE LIVE STREAM AKTIV</span>
                     </div>
 
                     <span className="text-xs text-gray-300 font-mono flex items-center gap-1.5 bg-black/60 px-3 py-1 rounded border border-white/10">
@@ -279,13 +279,13 @@ export default function App() {
                   <div className="space-y-1 max-w-xl">
                     <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-xs font-mono font-semibold border border-blue-500/30">
                       <Radio className="w-3.5 h-3.5 text-cyan-400" />
-                      Proxmox Real-Time Broadcast Hub
+                      Proxmox TikTok-Style Live & OBS Studio Hub
                     </div>
                     <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
-                      FiveM StreamHub • Live & VOD Center
+                      FiveM StreamHub • Live Studio
                     </h1>
                     <p className="text-xs text-gray-300">
-                      Öffne das Live-Studio auf deiner eigenen Unterseite, um deinen Stream zu starten.
+                      Streame live mit deinem Smartphone (TikTok-Style) oder verbinde OBS Studio per Stream-Schlüssel.
                     </p>
                   </div>
 
@@ -295,7 +295,7 @@ export default function App() {
                       className="py-2.5 px-4 rounded-md bg-gradient-to-r from-red-600 to-pink-600 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-red-600/30 hover:brightness-110 transition-all cursor-pointer"
                     >
                       <Camera className="w-4 h-4" />
-                      <span>🔴 LIVE-STUDIO ÖFFNEN</span>
+                      <span>🔴 TIKTOK LIVE STUDIO ÖFFNEN</span>
                     </button>
                   </div>
                 </div>
@@ -376,7 +376,7 @@ export default function App() {
 
         {/* Footer */}
         <footer className="border-t border-white/5 py-3 text-center text-xs text-gray-500 font-mono mt-auto">
-          FiveM StreamHub Real-Time Subpage Router • Proxmox VE
+          FiveM StreamHub TikTok Live & OBS Studio Hub • Proxmox VE
         </footer>
 
       </div>

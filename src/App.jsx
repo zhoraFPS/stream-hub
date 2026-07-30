@@ -5,7 +5,7 @@ import VideoCard from './components/VideoCard';
 import VideoPlayer from './components/VideoPlayer';
 import UploadModal from './components/UploadModal';
 import QRCodeModal from './components/QRCodeModal';
-import { PlaySquare, Sparkles, RefreshCw, AlertCircle } from 'lucide-react';
+import { PlaySquare, Sparkles, RefreshCw, AlertCircle, Radio } from 'lucide-react';
 
 export default function App() {
   const [videos, setVideos] = useState([]);
@@ -21,9 +21,9 @@ export default function App() {
   const [error, setError] = useState(null);
 
   // Fetch System Info & Videos
-  const fetchVideos = async () => {
+  const fetchVideos = async (quiet = false) => {
     try {
-      setLoading(true);
+      if (!quiet) setLoading(true);
       const url = new URL('/api/videos', window.location.origin);
       if (selectedCategory && selectedCategory !== 'All') {
         url.searchParams.append('category', selectedCategory);
@@ -33,15 +33,15 @@ export default function App() {
       }
 
       const res = await fetch(url);
-      if (!res.ok) throw new Error('Fehler beim Laden der Videos');
+      if (!res.ok) throw new Error('Fehler beim Laden der VODs');
       const data = await res.json();
       setVideos(data);
       setError(null);
     } catch (err) {
       console.error('Fetch error:', err);
-      setError(err.message);
+      if (!quiet) setError(err.message);
     } finally {
-      setLoading(false);
+      if (!quiet) setLoading(false);
     }
   };
 
@@ -63,6 +63,14 @@ export default function App() {
 
   useEffect(() => {
     fetchVideos();
+  }, [selectedCategory, searchQuery]);
+
+  // Live Auto-Refresh polling every 6 seconds so mobile uploads appear instantly on all devices
+  useEffect(() => {
+    const interval = setInterval(() => {
+      fetchVideos(true);
+    }, 6000);
+    return () => clearInterval(interval);
   }, [selectedCategory, searchQuery]);
 
   // Handle direct hash navigation e.g. /#watch=video-id
@@ -91,7 +99,6 @@ export default function App() {
   const handleSelectVideo = async (video) => {
     setActiveVideo(video);
     window.location.hash = `watch=${video.id}`;
-    // Fetch updated details & views
     try {
       const res = await fetch(`/api/videos/${video.id}`);
       if (res.ok) {
@@ -168,7 +175,7 @@ export default function App() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#0f0f12] text-gray-100">
+    <div className="min-h-screen flex flex-col bg-[#07090e] text-gray-100">
       
       {/* Navigation Header */}
       <Navbar
@@ -184,6 +191,8 @@ export default function App() {
         <main className="flex-1">
           <VideoPlayer
             video={activeVideo}
+            allVideos={videos}
+            onSelectVideo={handleSelectVideo}
             onBack={handleBackToGrid}
             onLike={handleLikeVideo}
             onAddComment={handleAddComment}
@@ -191,7 +200,7 @@ export default function App() {
           />
         </main>
       ) : (
-        <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col lg:flex-row gap-4 p-4">
+        <div className="flex-1 max-w-[1440px] w-full mx-auto flex flex-col lg:flex-row gap-4 p-4">
           
           {/* Sidebar */}
           <Sidebar
@@ -202,32 +211,32 @@ export default function App() {
           {/* Main Content Feed */}
           <main className="flex-1 space-y-6">
             
-            {/* Header Hero Banner */}
-            <div className="glass-panel p-6 rounded-2xl border border-white/10 relative overflow-hidden bg-gradient-to-r from-red-950/40 via-purple-950/20 to-black">
+            {/* FiveM HUD Hero Banner */}
+            <div className="glass-panel p-6 relative overflow-hidden bg-gradient-to-r from-blue-950/40 via-purple-950/20 to-black border border-blue-500/20">
               <div className="max-w-xl space-y-2 relative z-10">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-red-500/10 text-red-400 text-xs font-semibold border border-red-500/30">
-                  <Sparkles className="w-3.5 h-3.5" />
-                  Ultra Low-Latency Local VOD Platform
+                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-blue-500/10 text-blue-400 text-xs font-mono font-semibold border border-blue-500/30">
+                  <Radio className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
+                  DHCP Live Streaming & VOD Center
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                  Deine eigene YouTube-Cloud im Heimnetzwerk
+                  FiveM StreamHub • Proxmox NUC Node
                 </h1>
-                <p className="text-sm text-gray-300 leading-relaxed">
-                  Streaming direkt von deinem Intel NUC auf Proxmox. Blitzschnelle Seek-Zeiten ohne Pufferung & unbegrenzter Speicherplatz.
+                <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
+                  Lade Videos direkt von deinem Smartphone hoch oder verfolge VOD-Streams mit &lt;10ms Latenz auf deiner Proxmox SSD.
                 </p>
               </div>
             </div>
 
-            {/* Video Grid */}
+            {/* Video Grid Header */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                  <span>{selectedCategory === 'All' ? 'Alle Neuesten VODs' : selectedCategory}</span>
-                  <span className="text-xs text-gray-400 font-normal">({videos.length} VODs)</span>
+                <h2 className="text-base font-bold text-white flex items-center gap-2">
+                  <span>{selectedCategory === 'All' ? 'Alle VOD-Mediatheken' : selectedCategory}</span>
+                  <span className="text-xs text-gray-500 font-mono font-normal">({videos.length} VODs)</span>
                 </h2>
                 <button
-                  onClick={fetchVideos}
-                  className="p-1.5 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+                  onClick={() => fetchVideos()}
+                  className="p-1.5 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
                   title="Aktualisieren"
                 >
                   <RefreshCw className="w-4 h-4" />
@@ -236,29 +245,29 @@ export default function App() {
 
               {loading ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 py-8">
-                  {[1, 2, 3, 4, 5, 6].map((n) => (
+                  {[1, 2, 3].map((n) => (
                     <div key={n} className="animate-pulse space-y-3">
-                      <div className="bg-white/5 aspect-video rounded-2xl"></div>
+                      <div className="bg-white/5 aspect-video rounded-md"></div>
                       <div className="h-4 bg-white/5 rounded w-3/4"></div>
                       <div className="h-3 bg-white/5 rounded w-1/2"></div>
                     </div>
                   ))}
                 </div>
               ) : error ? (
-                <div className="p-8 text-center glass-panel rounded-2xl space-y-2 border border-red-500/30">
+                <div className="p-8 text-center glass-panel space-y-2 border border-red-500/30">
                   <AlertCircle className="w-8 h-8 text-red-500 mx-auto" />
                   <p className="font-semibold text-white">{error}</p>
                   <p className="text-xs text-gray-400">Prüfe, ob der Server auf Port 5000 läuft.</p>
                 </div>
               ) : videos.length === 0 ? (
-                <div className="p-12 text-center glass-panel rounded-2xl space-y-3">
+                <div className="p-12 text-center glass-panel space-y-3">
                   <PlaySquare className="w-12 h-12 text-gray-600 mx-auto" />
-                  <h3 className="font-bold text-white text-base">Keine VODs gefunden</h3>
+                  <h3 className="font-bold text-white text-base">Keine VODs vorhanden</h3>
                   <p className="text-xs text-gray-400 max-w-sm mx-auto">
-                    Lade dein erstes Video hoch, um deinen lokalen Streaming-Dienst zu starten!
+                    Scanne den QR-Code oben mit deinem Handy und starte deinen ersten Teststream!
                   </p>
                   <button onClick={() => setIsUploadOpen(true)} className="btn-primary text-xs mx-auto">
-                    Video Hochladen
+                    Video / Handy-Stream Hochladen
                   </button>
                 </div>
               ) : (
@@ -281,7 +290,7 @@ export default function App() {
         </div>
       )}
 
-      {/* Upload Modal */}
+      {/* Upload / Smartphone Live Stream Modal */}
       <UploadModal
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
@@ -296,8 +305,8 @@ export default function App() {
       />
 
       {/* Footer */}
-      <footer className="border-t border-white/5 py-4 text-center text-xs text-gray-500 mt-auto">
-        StreamHub Proxmox Edition • Intel QuickSync QSV Local Network VOD Server
+      <footer className="border-t border-white/5 py-4 text-center text-xs text-gray-500 font-mono mt-auto">
+        FiveM StreamHub • Proxmox VE Intel QuickSync QSV Engine
       </footer>
 
     </div>

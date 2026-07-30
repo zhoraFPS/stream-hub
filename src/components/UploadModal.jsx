@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { X, UploadCloud, Film, Image as ImageIcon, Sparkles, CheckCircle2, Loader2 } from 'lucide-react';
+import { X, UploadCloud, Film, Image as ImageIcon, Camera, Loader2, Smartphone } from 'lucide-react';
 
 export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
   const [videoFile, setVideoFile] = useState(null);
@@ -9,8 +9,8 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('General');
-  const [tags, setTags] = useState('');
+  const [category, setCategory] = useState('Gaming');
+  const [tags, setTags] = useState('Smartphone Stream');
   const [duration, setDuration] = useState(0);
 
   const [isUploading, setIsUploading] = useState(false);
@@ -18,22 +18,23 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
   const [dragActive, setDragActive] = useState(false);
 
   const videoInputRef = useRef(null);
+  const cameraInputRef = useRef(null);
   const thumbInputRef = useRef(null);
 
   if (!isOpen) return null;
 
-  // Handle Video Selection & Auto Frame Snapshot
   const handleVideoSelect = (file) => {
     if (!file || !file.type.startsWith('video/')) {
-      alert('Bitte wähle eine gültige Videodatei (.mp4, .webm, .mkv).');
+      alert('Bitte wähle eine gültige Videodatei (.mp4, .webm, .mkv, .mov).');
       return;
     }
 
     setVideoFile(file);
-    setTitle(file.name.replace(/\.[^/.]+$/, '')); // Auto title from filename
+    if (!title) {
+      setTitle(file.name.replace(/\.[^/.]+$/, '') || 'Handy Stream Video');
+    }
     setIsCapturingThumb(true);
 
-    // Create hidden video element to capture snapshot frame at second 2
     const videoUrl = URL.createObjectURL(file);
     const videoEl = document.createElement('video');
     videoEl.src = videoUrl;
@@ -42,7 +43,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
 
     videoEl.onloadedmetadata = () => {
       setDuration(videoEl.duration);
-      videoEl.currentTime = Math.min(2.0, videoEl.duration / 2);
+      videoEl.currentTime = Math.min(2.0, (videoEl.duration || 4) / 2);
     };
 
     videoEl.onseeked = () => {
@@ -87,11 +88,11 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
     if (!videoFile) return;
 
     setIsUploading(true);
-    setUploadProgress(10);
+    setUploadProgress(15);
 
     const formData = new FormData();
     formData.append('video', videoFile);
-    formData.append('title', title);
+    formData.append('title', title || 'Handy Stream VOD');
     formData.append('description', description);
     formData.append('category', category);
     formData.append('tags', tags);
@@ -104,13 +105,13 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
     }
 
     try {
-      setUploadProgress(40);
+      setUploadProgress(50);
       const res = await fetch('/api/upload', {
         method: 'POST',
         body: formData,
       });
 
-      setUploadProgress(80);
+      setUploadProgress(90);
 
       if (!res.ok) {
         const errData = await res.json();
@@ -123,7 +124,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
         setIsUploading(false);
         onUploadSuccess(newVideo);
         onClose();
-      }, 500);
+      }, 400);
     } catch (err) {
       alert('Fehler beim Upload: ' + err.message);
       setIsUploading(false);
@@ -131,62 +132,82 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-gray-900 border border-white/15 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
+      <div className="bg-[#07090e] border border-white/15 w-full max-w-xl rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-white/10">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10">
           <div className="flex items-center gap-2">
-            <Film className="w-5 h-5 text-red-500" />
-            <h2 className="font-bold text-lg text-white">Neues VOD auf Proxmox Hochladen</h2>
+            <Film className="w-5 h-5 text-blue-400" />
+            <h2 className="font-bold text-base text-white">VOD / Handy-Stream Hochladen</h2>
           </div>
           <button
             onClick={onClose}
-            className="p-1 rounded-lg text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
+            className="p-1 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Upload Form */}
-        <form onSubmit={handleSubmit} className="p-6 overflow-y-auto space-y-5">
+        <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4 text-xs">
           
-          {/* File Dropzone */}
+          {/* File Dropzone & Camera Trigger */}
           {!videoFile ? (
-            <div
-              onDragEnter={handleDrag}
-              onDragLeave={handleDrag}
-              onDragOver={handleDrag}
-              onDrop={handleDrop}
-              onClick={() => videoInputRef.current?.click()}
-              className={`border-2 border-dashed rounded-2xl p-8 text-center cursor-pointer transition-all ${
-                dragActive
-                  ? 'border-red-500 bg-red-500/10'
-                  : 'border-white/15 hover:border-white/30 bg-white/[0.02]'
-              }`}
-            >
+            <div className="space-y-3">
+              <div
+                onDragEnter={handleDrag}
+                onDragLeave={handleDrag}
+                onDragOver={handleDrag}
+                onDrop={handleDrop}
+                onClick={() => videoInputRef.current?.click()}
+                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
+                  dragActive
+                    ? 'border-blue-500 bg-blue-500/10'
+                    : 'border-white/15 hover:border-white/30 bg-white/[0.02]'
+                }`}
+              >
+                <input
+                  ref={videoInputRef}
+                  type="file"
+                  accept="video/*"
+                  className="hidden"
+                  onChange={(e) => e.target.files?.[0] && handleVideoSelect(e.target.files[0])}
+                />
+                <UploadCloud className="w-10 h-10 mx-auto text-blue-400 mb-2" />
+                <p className="font-bold text-white text-sm">
+                  Datei auswählen oder hierher ziehen
+                </p>
+                <p className="text-gray-400 mt-1">
+                  MP4, WebM, MOV, MKV (bis 10 GB auf NUC SSD)
+                </p>
+              </div>
+
+              {/* Mobile Camera Direct Record Option */}
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                className="w-full btn-secondary text-xs flex items-center justify-center gap-2 border-dashed border-cyan-500/40 text-cyan-400 bg-cyan-500/5 hover:bg-cyan-500/15"
+              >
+                <Camera className="w-4 h-4 text-cyan-400" />
+                <span>📱 Mit Handy-Kamera jetzt aufnehmen & live streamen</span>
+              </button>
               <input
-                ref={videoInputRef}
+                ref={cameraInputRef}
                 type="file"
                 accept="video/*"
+                capture="environment"
                 className="hidden"
                 onChange={(e) => e.target.files?.[0] && handleVideoSelect(e.target.files[0])}
               />
-              <UploadCloud className="w-12 h-12 mx-auto text-red-500 mb-3 animate-bounce" />
-              <p className="font-semibold text-white text-base">
-                Videodatei hierhin ziehen oder klicken
-              </p>
-              <p className="text-xs text-gray-400 mt-1">
-                Unterstützt MP4, WebM, MKV (bis 10 GB für lokales Streaming)
-              </p>
             </div>
           ) : (
-            <div className="p-4 rounded-xl bg-white/[0.03] border border-white/10 flex items-center justify-between">
+            <div className="p-3 rounded-lg bg-white/[0.03] border border-white/10 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <Film className="w-8 h-8 text-red-500" />
+                <Film className="w-7 h-7 text-blue-400" />
                 <div>
-                  <p className="font-semibold text-white text-sm">{videoFile.name}</p>
-                  <p className="text-xs text-gray-400">
+                  <p className="font-semibold text-white text-xs truncate max-w-[240px]">{videoFile.name}</p>
+                  <p className="text-[10px] text-gray-400 font-mono">
                     {(videoFile.size / (1024 * 1024)).toFixed(1)} MB
                   </p>
                 </div>
@@ -204,77 +225,74 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
             </div>
           )}
 
-          {/* Thumbnail Preview / Custom Thumbnail */}
+          {/* Thumbnail Preview */}
           {videoFile && (
-            <div className="space-y-2">
-              <label className="text-xs font-semibold text-gray-300 block">
-                Video Thumbnail Preview (Automatisch generiert)
+            <div className="space-y-1.5">
+              <label className="font-semibold text-gray-300 block text-xs">
+                Auto-Thumbnail Preview (Sekunde 00:02)
               </label>
-              <div className="flex gap-4 items-center">
-                <div className="w-40 aspect-video rounded-xl bg-black overflow-hidden border border-white/15 relative">
+              <div className="flex gap-3 items-center">
+                <div className="w-32 aspect-video rounded bg-black overflow-hidden border border-white/15 relative">
                   {isCapturingThumb ? (
-                    <div className="inset-0 flex items-center justify-center text-xs text-gray-400 gap-1">
-                      <Loader2 className="w-4 h-4 animate-spin text-red-500" />
-                      Frame Snapshot...
+                    <div className="inset-0 flex items-center justify-center text-[10px] text-gray-400 gap-1">
+                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                      Snapshot...
                     </div>
                   ) : autoThumbnailData ? (
                     <img src={autoThumbnailData} alt="Snapshot" className="w-full h-full object-cover" />
                   ) : (
-                    <div className="text-xs text-gray-500 p-2 text-center">Standart-Thumbnail</div>
+                    <div className="text-[10px] text-gray-500 p-2 text-center">Thumbnail</div>
                   )}
                 </div>
 
-                <div className="space-y-1">
-                  <button
-                    type="button"
-                    onClick={() => thumbInputRef.current?.click()}
-                    className="btn-secondary text-xs flex items-center gap-2"
-                  >
-                    <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
-                    Eigenes Bild hochladen
-                  </button>
-                  <input
-                    ref={thumbInputRef}
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={(e) => {
-                      if (e.target.files?.[0]) {
-                        setThumbnailFile(e.target.files[0]);
-                        setAutoThumbnailData(URL.createObjectURL(e.target.files[0]));
-                      }
-                    }}
-                  />
-                  <p className="text-[11px] text-gray-400">Standardmäßig Frame bei 00:02.</p>
-                </div>
+                <button
+                  type="button"
+                  onClick={() => thumbInputRef.current?.click()}
+                  className="btn-secondary text-xs flex items-center gap-1.5"
+                >
+                  <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
+                  Eigenes Bild wählen
+                </button>
+                <input
+                  ref={thumbInputRef}
+                  type="file"
+                  accept="image/*"
+                  className="hidden"
+                  onChange={(e) => {
+                    if (e.target.files?.[0]) {
+                      setThumbnailFile(e.target.files[0]);
+                      setAutoThumbnailData(URL.createObjectURL(e.target.files[0]));
+                    }
+                  }}
+                />
               </div>
             </div>
           )}
 
-          {/* Form Fields */}
-          <div className="space-y-4">
+          {/* Fields */}
+          <div className="space-y-3">
             <div>
-              <label className="text-xs font-semibold text-gray-300 block mb-1">Titel</label>
+              <label className="font-semibold text-gray-300 block mb-1">VOD Titel</label>
               <input
                 type="text"
                 required
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
-                placeholder="Video Titel eingeben..."
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-red-500/50"
+                placeholder="Video Titel..."
+                className="w-full bg-black/40 border border-white/10 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Kategorie</label>
+                <label className="font-semibold text-gray-300 block mb-1">Kategorie</label>
                 <select
                   value={category}
                   onChange={(e) => setCategory(e.target.value)}
-                  className="w-full bg-gray-800 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-red-500/50"
+                  className="w-full bg-[#0e121b] border border-white/10 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
                 >
-                  <option value="Movies">Filme & Clips</option>
                   <option value="Gaming">Gaming Streams</option>
+                  <option value="Movies">Filme & Clips</option>
                   <option value="Tutorials">Tutorials & Tech</option>
                   <option value="Proxmox">Proxmox / NUC</option>
                   <option value="General">Sonstiges</option>
@@ -282,51 +300,51 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
               </div>
 
               <div>
-                <label className="text-xs font-semibold text-gray-300 block mb-1">Tags (Kommagetrennt)</label>
+                <label className="font-semibold text-gray-300 block mb-1">Tags</label>
                 <input
                   type="text"
                   value={tags}
                   onChange={(e) => setTags(e.target.value)}
-                  placeholder="z.B. 4K, Benchmark, NUC"
-                  className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-red-500/50"
+                  placeholder="z.B. Handy, Live, 4K"
+                  className="w-full bg-black/40 border border-white/10 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
                 />
               </div>
             </div>
 
             <div>
-              <label className="text-xs font-semibold text-gray-300 block mb-1">Beschreibung</label>
+              <label className="font-semibold text-gray-300 block mb-1">Beschreibung</label>
               <textarea
-                rows={3}
+                rows={2}
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
-                placeholder="Kurze Beschreibung des VODs..."
-                className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-2.5 text-sm text-white focus:outline-none focus:border-red-500/50 resize-none"
+                placeholder="Optionale Beschreibung..."
+                className="w-full bg-black/40 border border-white/10 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500 resize-none"
               />
             </div>
           </div>
 
-          {/* Progress Bar during LAN Upload */}
+          {/* Progress Bar */}
           {isUploading && (
             <div className="space-y-1">
-              <div className="flex justify-between text-xs text-gray-300">
-                <span>Upload im lokalen Netzwerk...</span>
+              <div className="flex justify-between text-[11px] text-gray-300 font-mono">
+                <span>Wird an Proxmox NUC gesendet...</span>
                 <span>{uploadProgress}%</span>
               </div>
-              <div className="w-full h-2 bg-white/10 rounded-full overflow-hidden">
+              <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
                 <div
-                  className="h-full bg-gradient-to-r from-red-500 to-pink-500 transition-all duration-300"
+                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-300"
                   style={{ width: `${uploadProgress}%` }}
                 />
               </div>
             </div>
           )}
 
-          {/* Actions */}
-          <div className="flex justify-end gap-3 pt-2">
+          {/* Submit */}
+          <div className="flex justify-end gap-2 pt-2">
             <button
               type="button"
               onClick={onClose}
-              className="btn-secondary text-sm"
+              className="btn-secondary text-xs"
               disabled={isUploading}
             >
               Abbrechen
@@ -334,15 +352,15 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
             <button
               type="submit"
               disabled={!videoFile || isUploading}
-              className="btn-primary text-sm shadow-lg disabled:opacity-50"
+              className="btn-primary text-xs shadow-md disabled:opacity-50"
             >
               {isUploading ? (
                 <>
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                  Wird hochgeladen...
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  Übertrage...
                 </>
               ) : (
-                'VOD Speichern & Veröffentlichen'
+                'VOD Hochladen & Live Streamen'
               )}
             </button>
           </div>

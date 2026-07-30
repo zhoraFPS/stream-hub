@@ -27,5 +27,6 @@ services:
       - "8189:8189"   # WebRTC UDP
     environment:
       - MTX_WEBRTCADDITIONALHOSTS=192.168.178.69
-      - MTX_PATHS_ALL_OTHERS_RUNONPUBLISH=wget -qO- --post-data="" http://stream-hub:5000/api/internal/obs-start
-      - MTX_PATHS_ALL_OTHERS_RUNONPUBLISHDONE=wget -qO- --post-data="" http://stream-hub:5000/api/internal/obs-stop
+    volumes:
+      - ./server/mediamtx.yml:/mediamtx.yml
+      - ./server/on_publish.sh:/on_publish.sh

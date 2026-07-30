@@ -7,11 +7,12 @@ services:
     restart: unless-stopped
     ports:
       - "5000:5000"
+      - "5443:5443"
     environment:
       - PORT=5000
+      - HTTPS_PORT=5443
       - NODE_ENV=production
     volumes:
       - ./server/data:/app/server/data
     devices:
-      # Proxmox / Intel NUC GPU Passthrough for Hardware Accelerated Decoding & Transcoding
       - /dev/dri:/dev/dri

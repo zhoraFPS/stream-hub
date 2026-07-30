@@ -5,15 +5,31 @@ import fs from 'fs';
 import path from 'path';
 import os from 'os';
 import http from 'http';
+import https from 'https';
 import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
+import { ensureCertsExist } from './generate-cert.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
-const server = http.createServer(app);
+const HTTPS_PORT = process.env.HTTPS_PORT || 5443;
+
+// Create HTTP Server
+const httpServer = http.createServer(app);
+
+// Create HTTPS Server if SSL certs available
+let httpsServer = null;
+const sslCerts = ensureCertsExist();
+if (sslCerts && sslCerts.key && sslCerts.cert) {
+  try {
+    httpsServer = https.createServer({ key: sslCerts.key, cert: sslCerts.cert }, app);
+  } catch (e) {
+    console.log('HTTPS init warning:', e.message);
+  }
+}
 
 // Enable CORS & JSON parsing
 app.use(cors());
@@ -102,7 +118,7 @@ function getLocalIp() {
   return 'localhost';
 }
 
-// Seed Demo VODs with LOCAL mp4 files
+// Seed Demo VODs
 function seedSampleVideos() {
   const db = readDB();
   const sample1Exists = fs.existsSync(path.join(VIDEOS_DIR, 'sample-demo.mp4'));
@@ -116,22 +132,22 @@ function seedSampleVideos() {
     if (sample1Exists) {
       sampleVideos.push({
         id: 'demo-local-1',
-        title: 'FiveM Ultra HD Stream Showcase - Local 4K VOD',
+        title: 'StreamHub Ultra HD Showcase - Local 4K VOD',
         description: 'Echter lokaler Stream-Test von der Proxmox Intel NUC SSD. Ultra-Low-Latency Seek und 100% offline verfügbar.',
         category: 'Gaming',
         duration: 18,
         views: 2450,
         likes: 340,
         dislikes: 2,
-        uploader: 'FiveM Core Node',
+        uploader: 'Core Node',
         createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
         filename: 'sample-demo.mp4',
         videoUrl: '/api/videos/demo-local-1/stream',
         thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
         isExternal: false,
-        tags: ['FiveM', '4K', 'Proxmox', 'Local VOD'],
+        tags: ['4K', 'Proxmox', 'Local VOD'],
         comments: [
-          { id: 'c1', user: 'FiveM Admin', text: 'Läuft mit <10ms Latenz perfekt im NUC-Netzwerk!', date: new Date().toISOString() }
+          { id: 'c1', user: 'Admin', text: 'Läuft mit <10ms Latenz perfekt im NUC-Netzwerk!', date: new Date().toISOString() }
         ]
       });
     }
@@ -175,82 +191,81 @@ if (fs.existsSync(DIST_DIR)) {
 }
 
 // REAL-TIME WEBSOCKET LIVE STREAMING ENGINE
-const wss = new WebSocketServer({ server });
+const wssHttp = new WebSocketServer({ server: httpServer });
 let activeLiveStream = null;
 let liveViewers = new Set();
 let liveChunks = [];
 
-wss.on('connection', (ws, req) => {
-  const url = req.url || '';
+function setupWebSocket(wssInstance) {
+  wssInstance.on('connection', (ws, req) => {
+    const url = req.url || '';
 
-  if (url.includes('/live/publish')) {
-    console.log('📱 Live Stream Publisher Connected');
-    let streamFilename = `live-rec-${Date.now()}.webm`;
-    let streamFilePath = path.join(VIDEOS_DIR, streamFilename);
-    let fileWriteStream = fs.createWriteStream(streamFilePath);
+    if (url.includes('/live/publish')) {
+      console.log('📱 Live Stream Publisher Connected');
+      let streamFilename = `live-rec-${Date.now()}.webm`;
+      let streamFilePath = path.join(VIDEOS_DIR, streamFilename);
+      let fileWriteStream = fs.createWriteStream(streamFilePath);
 
-    ws.on('message', (message, isBinary) => {
-      if (isBinary) {
-        // Save chunk for VOD conversion
-        fileWriteStream.write(message);
-        liveChunks.push(message);
+      ws.on('message', (message, isBinary) => {
+        if (isBinary) {
+          fileWriteStream.write(message);
+          liveChunks.push(message);
 
-        // Broadcast binary video chunk to all active live viewers
-        liveViewers.forEach((viewer) => {
-          if (viewer.readyState === 1) {
-            viewer.send(message);
-          }
-        });
-      } else {
-        try {
-          const data = JSON.parse(message.toString());
-          if (data.type === 'start') {
-            activeLiveStream = {
-              id: 'live-now',
-              title: data.title || '🔴 Live-Stream vom Handy',
-              uploader: data.uploader || 'Handy Live Cam',
-              isLive: true,
-              startedAt: new Date().toISOString(),
-              views: 1,
-              thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
-            };
-            liveChunks = [];
-            console.log(`Live Stream Started: ${activeLiveStream.title}`);
-          } else if (data.type === 'stop') {
-            finishLiveStream(fileWriteStream, streamFilename);
-          }
-        } catch (e) {}
+          liveViewers.forEach((viewer) => {
+            if (viewer.readyState === 1) {
+              viewer.send(message);
+            }
+          });
+        } else {
+          try {
+            const data = JSON.parse(message.toString());
+            if (data.type === 'start') {
+              activeLiveStream = {
+                id: 'live-now',
+                title: data.title || '🔴 Live-Stream',
+                uploader: data.uploader || 'Handy Live Cam',
+                isLive: true,
+                startedAt: new Date().toISOString(),
+                views: 1,
+                thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
+              };
+              liveChunks = [];
+              console.log(`Live Stream Started: ${activeLiveStream.title}`);
+            } else if (data.type === 'stop') {
+              finishLiveStream(fileWriteStream, streamFilename);
+            }
+          } catch (e) {}
+        }
+      });
+
+      ws.on('close', () => {
+        finishLiveStream(fileWriteStream, streamFilename);
+      });
+
+    } else if (url.includes('/live/watch')) {
+      liveViewers.add(ws);
+      if (activeLiveStream && liveChunks.length > 0) {
+        ws.send(liveChunks[0]);
       }
-    });
-
-    ws.on('close', () => {
-      console.log('📱 Live Stream Publisher Disconnected');
-      finishLiveStream(fileWriteStream, streamFilename);
-    });
-
-  } else if (url.includes('/live/watch')) {
-    console.log('📺 Live Stream Viewer Connected');
-    liveViewers.add(ws);
-
-    // Send active header if streaming
-    if (activeLiveStream && liveChunks.length > 0) {
-      // Send accumulated initial header chunk
-      ws.send(liveChunks[0]);
-    }
-
-    // Broadcast current viewer count
-    broadcastViewerCount();
-
-    ws.on('close', () => {
-      liveViewers.delete(ws);
       broadcastViewerCount();
-    });
-  }
-});
+      ws.on('close', () => {
+        liveViewers.delete(ws);
+        broadcastViewerCount();
+      });
+    }
+  });
+}
+
+setupWebSocket(wssHttp);
+
+if (httpsServer) {
+  const wssHttps = new WebSocketServer({ server: httpsServer });
+  setupWebSocket(wssHttps);
+}
 
 function broadcastViewerCount() {
   const count = liveViewers.size + 1;
-  wss.clients.forEach((client) => {
+  wssHttp.clients.forEach((client) => {
     if (client.readyState === 1) {
       client.send(JSON.stringify({ type: 'viewers', count }));
     }
@@ -265,7 +280,6 @@ function finishLiveStream(fileWriteStream, filename) {
   activeLiveStream = null;
   liveViewers.clear();
 
-  // Save live recording to VOD catalog
   const db = readDB();
   const vodId = 'vod-' + Date.now();
   const newVod = {
@@ -307,7 +321,9 @@ app.get('/api/system/info', (req, res) => {
   res.json({
     localIp: ip,
     port: PORT,
+    httpsPort: HTTPS_PORT,
     networkUrl: `http://${ip}:${PORT}`,
+    httpsUrl: `https://${ip}:${HTTPS_PORT}`,
     hostname: os.hostname(),
     uptime: process.uptime(),
     platform: os.platform(),
@@ -354,7 +370,6 @@ app.get('/api/videos/:id', (req, res) => {
   res.json(video);
 });
 
-// LOW LATENCY STREAMING ENDPOINT WITH HTTP 206 RANGE STREAMING
 app.get('/api/videos/:id/stream', (req, res) => {
   const db = readDB();
   const video = db.videos.find((v) => v.id === req.params.id);
@@ -425,7 +440,6 @@ app.get('/api/videos/:id/stream', (req, res) => {
   }
 });
 
-// POST /api/upload
 app.post(
   '/api/upload',
   upload.fields([
@@ -466,7 +480,7 @@ app.post(
         views: 0,
         likes: 0,
         dislikes: 0,
-        uploader: 'FiveM Streamer',
+        uploader: 'Streamer',
         createdAt: new Date().toISOString(),
         filename: videoFile.filename,
         videoUrl: `/api/videos/${videoId}/stream`,
@@ -474,7 +488,7 @@ app.post(
         mimeType: videoFile.mimetype,
         sizeBytes: videoFile.size,
         isExternal: false,
-        tags: tags ? tags.split(',').map((t) => t.trim()) : ['FiveM VOD'],
+        tags: tags ? tags.split(',').map((t) => t.trim()) : ['VOD'],
         comments: [],
       };
 
@@ -490,7 +504,6 @@ app.post(
   }
 );
 
-// POST /api/videos/:id/like
 app.post('/api/videos/:id/like', (req, res) => {
   const db = readDB();
   const video = db.videos.find((v) => v.id === req.params.id);
@@ -501,7 +514,6 @@ app.post('/api/videos/:id/like', (req, res) => {
   res.json({ likes: video.likes });
 });
 
-// POST /api/videos/:id/comment
 app.post('/api/videos/:id/comment', (req, res) => {
   const { user, text } = req.body;
   if (!text) return res.status(400).json({ error: 'Comment text required' });
@@ -512,7 +524,7 @@ app.post('/api/videos/:id/comment', (req, res) => {
 
   const comment = {
     id: 'c-' + Date.now(),
-    user: user || 'FiveM User',
+    user: user || 'User',
     text,
     date: new Date().toISOString(),
   };
@@ -524,7 +536,6 @@ app.post('/api/videos/:id/comment', (req, res) => {
   res.status(201).json(comment);
 });
 
-// DELETE /api/videos/:id
 app.delete('/api/videos/:id', (req, res) => {
   const db = readDB();
   const index = db.videos.findIndex((v) => v.id === req.params.id);
@@ -548,14 +559,22 @@ if (fs.existsSync(DIST_DIR)) {
   });
 }
 
-server.listen(PORT, '0.0.0.0', () => {
+// Listen HTTP
+httpServer.listen(PORT, '0.0.0.0', () => {
   const localIp = getLocalIp();
   console.log(`
   ======================================================
-  🎬 FiveM StreamHub WebSocket Real-Time Live Server
+  🎬 StreamHub Local Server Running
   ======================================================
-  Local Machine:   http://localhost:${PORT}
-  Local Network:   http://${localIp}:${PORT}
+  HTTP  URL:   http://${localIp}:${PORT}
+  HTTPS URL:   https://${localIp}:${HTTPS_PORT}
   ======================================================
   `);
 });
+
+// Listen HTTPS
+if (httpsServer) {
+  httpsServer.listen(HTTPS_PORT, '0.0.0.0', () => {
+    console.log(`🔒 HTTPS Server running on https://0.0.0.0:${HTTPS_PORT}`);
+  });
+}

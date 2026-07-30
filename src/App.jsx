@@ -3,24 +3,31 @@ import Navbar from './components/Navbar';
 import Sidebar from './components/Sidebar';
 import VideoCard from './components/VideoCard';
 import VideoPlayer from './components/VideoPlayer';
+import LivePlayer from './components/LivePlayer';
 import UploadModal from './components/UploadModal';
+import LiveBroadcasterModal from './components/LiveBroadcasterModal';
 import QRCodeModal from './components/QRCodeModal';
-import { PlaySquare, Sparkles, RefreshCw, AlertCircle, Radio } from 'lucide-react';
+import { PlaySquare, Radio, RefreshCw, AlertCircle, Camera, Users } from 'lucide-react';
 
 export default function App() {
   const [videos, setVideos] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [activeVideo, setActiveVideo] = useState(null);
+
+  // Live Stream state
+  const [liveStatus, setLiveStatus] = useState(null);
+  const [isWatchingLive, setIsWatchingLive] = useState(false);
   
   const [isUploadOpen, setIsUploadOpen] = useState(false);
+  const [isLiveBroadcasterOpen, setIsLiveBroadcasterOpen] = useState(false);
   const [isQROpen, setIsQROpen] = useState(false);
   const [systemInfo, setSystemInfo] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // Fetch System Info & Videos
+  // Fetch System Info, Live Status, and Videos
   const fetchVideos = async (quiet = false) => {
     try {
       if (!quiet) setLoading(true);
@@ -45,6 +52,16 @@ export default function App() {
     }
   };
 
+  const fetchLiveStatus = async () => {
+    try {
+      const res = await fetch('/api/live/status');
+      if (res.ok) {
+        const data = await res.json();
+        setLiveStatus(data);
+      }
+    } catch (e) {}
+  };
+
   const fetchSystemInfo = async () => {
     try {
       const res = await fetch('/api/system/info');
@@ -52,9 +69,7 @@ export default function App() {
         const info = await res.json();
         setSystemInfo(info);
       }
-    } catch (err) {
-      console.log('System info fetch passive fail:', err);
-    }
+    } catch (err) {}
   };
 
   useEffect(() => {
@@ -63,21 +78,27 @@ export default function App() {
 
   useEffect(() => {
     fetchVideos();
+    fetchLiveStatus();
   }, [selectedCategory, searchQuery]);
 
-  // Live Auto-Refresh polling every 6 seconds so mobile uploads appear instantly on all devices
+  // Live Auto-Refresh polling every 3 seconds
   useEffect(() => {
     const interval = setInterval(() => {
       fetchVideos(true);
-    }, 6000);
+      fetchLiveStatus();
+    }, 3000);
     return () => clearInterval(interval);
   }, [selectedCategory, searchQuery]);
 
-  // Handle direct hash navigation e.g. /#watch=video-id
+  // Handle direct hash navigation e.g. /#watch=video-id or /#live
   useEffect(() => {
     const handleHash = async () => {
       const hash = window.location.hash;
-      if (hash.startsWith('#watch=')) {
+      if (hash === '#live') {
+        setIsWatchingLive(true);
+        setActiveVideo(null);
+      } else if (hash.startsWith('#watch=')) {
+        setIsWatchingLive(false);
         const videoId = hash.replace('#watch=', '');
         try {
           const res = await fetch(`/api/videos/${videoId}`);
@@ -97,6 +118,7 @@ export default function App() {
   }, []);
 
   const handleSelectVideo = async (video) => {
+    setIsWatchingLive(false);
     setActiveVideo(video);
     window.location.hash = `watch=${video.id}`;
     try {
@@ -112,6 +134,7 @@ export default function App() {
 
   const handleBackToGrid = () => {
     setActiveVideo(null);
+    setIsWatchingLive(false);
     window.location.hash = '';
     fetchVideos();
   };
@@ -186,8 +209,15 @@ export default function App() {
         systemInfo={systemInfo}
       />
 
-      {/* Main Layout */}
-      {activeVideo ? (
+      {/* Main Content Layout */}
+      {isWatchingLive ? (
+        <main className="flex-1">
+          <LivePlayer
+            liveStreamInfo={liveStatus?.stream}
+            onBack={handleBackToGrid}
+          />
+        </main>
+      ) : activeVideo ? (
         <main className="flex-1">
           <VideoPlayer
             video={activeVideo}
@@ -208,30 +238,69 @@ export default function App() {
             setSelectedCategory={setSelectedCategory}
           />
 
-          {/* Main Content Feed */}
-          <main className="flex-1 space-y-6">
+          {/* Main Feed */}
+          <main className="flex-1 space-y-5">
             
-            {/* FiveM HUD Hero Banner */}
-            <div className="glass-panel p-6 relative overflow-hidden bg-gradient-to-r from-blue-950/40 via-purple-950/20 to-black border border-blue-500/20">
-              <div className="max-w-xl space-y-2 relative z-10">
-                <div className="inline-flex items-center gap-2 px-3 py-1 rounded-md bg-blue-500/10 text-blue-400 text-xs font-mono font-semibold border border-blue-500/30">
-                  <Radio className="w-3.5 h-3.5 animate-pulse text-cyan-400" />
-                  DHCP Live Streaming & VOD Center
+            {/* Live Stream Hero Card if Stream Active */}
+            {liveStatus && liveStatus.active ? (
+              <div
+                onClick={() => {
+                  setIsWatchingLive(true);
+                  window.location.hash = 'live';
+                }}
+                className="glass-panel p-5 rounded-xl border border-red-500/50 bg-gradient-to-r from-red-950/60 via-black to-red-950/40 cursor-pointer hover:border-red-400 transition-all shadow-xl shadow-red-500/10 space-y-3"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-white font-mono text-xs font-bold animate-pulse">
+                    <Radio className="w-3.5 h-3.5" />
+                    <span>🔴 ECHTER HANDY LIVE STREAM AKTIV</span>
+                  </div>
+
+                  <span className="text-xs text-gray-300 font-mono flex items-center gap-1.5 bg-black/60 px-3 py-1 rounded border border-white/10">
+                    <Users className="w-3.5 h-3.5 text-cyan-400" />
+                    {liveStatus.viewers} Zuschauer
+                  </span>
                 </div>
-                <h1 className="text-2xl sm:text-3xl font-extrabold text-white tracking-tight">
-                  FiveM StreamHub • Proxmox NUC Node
-                </h1>
-                <p className="text-xs sm:text-sm text-gray-300 leading-relaxed">
-                  Lade Videos direkt von deinem Smartphone hoch oder verfolge VOD-Streams mit &lt;10ms Latenz auf deiner Proxmox SSD.
-                </p>
+
+                <div className="space-y-1">
+                  <h2 className="text-xl font-bold text-white tracking-tight">
+                    {liveStatus.stream?.title || '🔴 Live-Stream vom Handy'}
+                  </h2>
+                  <p className="text-xs text-red-300">
+                    Klicke hier, um den Live-Kamerastream direkt auf deinem Bildschirm anzusehen!
+                  </p>
+                </div>
               </div>
-            </div>
+            ) : (
+              <div className="glass-panel p-5 rounded-xl border border-blue-500/20 bg-gradient-to-r from-blue-950/30 via-black to-black flex flex-wrap items-center justify-between gap-4">
+                <div className="space-y-1 max-w-xl">
+                  <div className="inline-flex items-center gap-2 px-2.5 py-0.5 rounded bg-blue-500/10 text-blue-400 text-xs font-mono font-semibold border border-blue-500/30">
+                    <Radio className="w-3.5 h-3.5 text-cyan-400" />
+                    Proxmox Real-Time Broadcast Hub
+                  </div>
+                  <h1 className="text-xl sm:text-2xl font-extrabold text-white tracking-tight">
+                    FiveM StreamHub • Live & VOD Center
+                  </h1>
+                  <p className="text-xs text-gray-300">
+                    Starte jetzt einen echten Live-Stream mit deiner Handy-Kamera oder schaue lokale VODs.
+                  </p>
+                </div>
+
+                <button
+                  onClick={() => setIsLiveBroadcasterOpen(true)}
+                  className="py-2.5 px-4 rounded-md bg-gradient-to-r from-red-600 to-pink-600 text-white font-bold text-xs flex items-center gap-2 shadow-lg shadow-red-600/30 hover:brightness-110 transition-all cursor-pointer"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>🔴 HANDY LIVE STREAM STARTEN</span>
+                </button>
+              </div>
+            )}
 
             {/* Video Grid Header */}
-            <div className="space-y-4">
+            <div className="space-y-3">
               <div className="flex items-center justify-between">
-                <h2 className="text-base font-bold text-white flex items-center gap-2">
-                  <span>{selectedCategory === 'All' ? 'Alle VOD-Mediatheken' : selectedCategory}</span>
+                <h2 className="text-sm font-bold text-white flex items-center gap-2">
+                  <span>{selectedCategory === 'All' ? 'Alle VOD-Aufzeichnungen' : selectedCategory}</span>
                   <span className="text-xs text-gray-500 font-mono font-normal">({videos.length} VODs)</span>
                 </h2>
                 <button
@@ -244,7 +313,7 @@ export default function App() {
               </div>
 
               {loading ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 py-8">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 py-6">
                   {[1, 2, 3].map((n) => (
                     <div key={n} className="animate-pulse space-y-3">
                       <div className="bg-white/5 aspect-video rounded-md"></div>
@@ -264,14 +333,14 @@ export default function App() {
                   <PlaySquare className="w-12 h-12 text-gray-600 mx-auto" />
                   <h3 className="font-bold text-white text-base">Keine VODs vorhanden</h3>
                   <p className="text-xs text-gray-400 max-w-sm mx-auto">
-                    Scanne den QR-Code oben mit deinem Handy und starte deinen ersten Teststream!
+                    Starte deinen ersten Live-Stream oder lade ein Video hoch!
                   </p>
-                  <button onClick={() => setIsUploadOpen(true)} className="btn-primary text-xs mx-auto">
-                    Video / Handy-Stream Hochladen
+                  <button onClick={() => setIsLiveBroadcasterOpen(true)} className="btn-primary text-xs mx-auto">
+                    🔴 Live Stream starten
                   </button>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
                   {videos.map((video) => (
                     <VideoCard
                       key={video.id}
@@ -290,7 +359,20 @@ export default function App() {
         </div>
       )}
 
-      {/* Upload / Smartphone Live Stream Modal */}
+      {/* Live Broadcaster Modal */}
+      <LiveBroadcasterModal
+        isOpen={isLiveBroadcasterOpen}
+        onClose={() => setIsLiveBroadcasterOpen(false)}
+        onStreamStarted={() => {
+          fetchLiveStatus();
+        }}
+        onStreamEnded={() => {
+          fetchLiveStatus();
+          fetchVideos();
+        }}
+      />
+
+      {/* Upload Modal */}
       <UploadModal
         isOpen={isUploadOpen}
         onClose={() => setIsUploadOpen(false)}
@@ -305,8 +387,8 @@ export default function App() {
       />
 
       {/* Footer */}
-      <footer className="border-t border-white/5 py-4 text-center text-xs text-gray-500 font-mono mt-auto">
-        FiveM StreamHub • Proxmox VE Intel QuickSync QSV Engine
+      <footer className="border-t border-white/5 py-3 text-center text-xs text-gray-500 font-mono mt-auto">
+        FiveM StreamHub Real-Time Live Center • Proxmox VE Intel QSV
       </footer>
 
     </div>

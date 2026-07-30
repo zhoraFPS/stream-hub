@@ -4,6 +4,8 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import http from 'http';
+import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -11,6 +13,7 @@ const __dirname = path.dirname(__filename);
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const server = http.createServer(app);
 
 // Enable CORS & JSON parsing
 app.use(cors());
@@ -61,7 +64,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 10 * 1024 * 1024 * 1024 } // 10 GB max upload
+  limits: { fileSize: 10 * 1024 * 1024 * 1024 }
 });
 
 // JSON DB Helpers
@@ -102,11 +105,9 @@ function getLocalIp() {
 // Seed Demo VODs with LOCAL mp4 files
 function seedSampleVideos() {
   const db = readDB();
-  // Always verify seed sample files exist on disk
   const sample1Exists = fs.existsSync(path.join(VIDEOS_DIR, 'sample-demo.mp4'));
   const sample2Exists = fs.existsSync(path.join(VIDEOS_DIR, 'sample-demo2.mp4'));
 
-  // Update or reset sample VODs if external or broken
   const updatedVideos = (db.videos || []).filter(v => !v.isExternal);
 
   if (updatedVideos.length === 0) {
@@ -173,9 +174,134 @@ if (fs.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));
 }
 
+// REAL-TIME WEBSOCKET LIVE STREAMING ENGINE
+const wss = new WebSocketServer({ server });
+let activeLiveStream = null;
+let liveViewers = new Set();
+let liveChunks = [];
+
+wss.on('connection', (ws, req) => {
+  const url = req.url || '';
+
+  if (url.includes('/live/publish')) {
+    console.log('📱 Live Stream Publisher Connected');
+    let streamFilename = `live-rec-${Date.now()}.webm`;
+    let streamFilePath = path.join(VIDEOS_DIR, streamFilename);
+    let fileWriteStream = fs.createWriteStream(streamFilePath);
+
+    ws.on('message', (message, isBinary) => {
+      if (isBinary) {
+        // Save chunk for VOD conversion
+        fileWriteStream.write(message);
+        liveChunks.push(message);
+
+        // Broadcast binary video chunk to all active live viewers
+        liveViewers.forEach((viewer) => {
+          if (viewer.readyState === 1) {
+            viewer.send(message);
+          }
+        });
+      } else {
+        try {
+          const data = JSON.parse(message.toString());
+          if (data.type === 'start') {
+            activeLiveStream = {
+              id: 'live-now',
+              title: data.title || '🔴 Live-Stream vom Handy',
+              uploader: data.uploader || 'Handy Live Cam',
+              isLive: true,
+              startedAt: new Date().toISOString(),
+              views: 1,
+              thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
+            };
+            liveChunks = [];
+            console.log(`Live Stream Started: ${activeLiveStream.title}`);
+          } else if (data.type === 'stop') {
+            finishLiveStream(fileWriteStream, streamFilename);
+          }
+        } catch (e) {}
+      }
+    });
+
+    ws.on('close', () => {
+      console.log('📱 Live Stream Publisher Disconnected');
+      finishLiveStream(fileWriteStream, streamFilename);
+    });
+
+  } else if (url.includes('/live/watch')) {
+    console.log('📺 Live Stream Viewer Connected');
+    liveViewers.add(ws);
+
+    // Send active header if streaming
+    if (activeLiveStream && liveChunks.length > 0) {
+      // Send accumulated initial header chunk
+      ws.send(liveChunks[0]);
+    }
+
+    // Broadcast current viewer count
+    broadcastViewerCount();
+
+    ws.on('close', () => {
+      liveViewers.delete(ws);
+      broadcastViewerCount();
+    });
+  }
+});
+
+function broadcastViewerCount() {
+  const count = liveViewers.size + 1;
+  wss.clients.forEach((client) => {
+    if (client.readyState === 1) {
+      client.send(JSON.stringify({ type: 'viewers', count }));
+    }
+  });
+}
+
+function finishLiveStream(fileWriteStream, filename) {
+  if (!activeLiveStream) return;
+  
+  fileWriteStream.end();
+  const liveTitle = activeLiveStream.title;
+  activeLiveStream = null;
+  liveViewers.clear();
+
+  // Save live recording to VOD catalog
+  const db = readDB();
+  const vodId = 'vod-' + Date.now();
+  const newVod = {
+    id: vodId,
+    title: `🔴 Aufzeichnung: ${liveTitle}`,
+    description: 'Automatische Live-Stream Aufzeichnung vom Handy.',
+    category: 'Gaming',
+    duration: 30,
+    views: 1,
+    likes: 10,
+    dislikes: 0,
+    uploader: 'Handy Live Stream',
+    createdAt: new Date().toISOString(),
+    filename,
+    videoUrl: `/api/videos/${vodId}/stream`,
+    thumbnailUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800&q=80',
+    isExternal: false,
+    tags: ['Handy Stream', 'Live Aufzeichnung', 'Proxmox'],
+    comments: []
+  };
+
+  db.videos.unshift(newVod);
+  writeDB(db);
+  console.log(`Live Stream saved to VOD library: ${newVod.title}`);
+}
+
 // API Routes
 
-// System info endpoint
+app.get('/api/live/status', (req, res) => {
+  res.json({
+    active: !!activeLiveStream,
+    stream: activeLiveStream,
+    viewers: liveViewers.size + 1
+  });
+});
+
 app.get('/api/system/info', (req, res) => {
   const ip = getLocalIp();
   res.json({
@@ -191,7 +317,6 @@ app.get('/api/system/info', (req, res) => {
   });
 });
 
-// GET /api/videos
 app.get('/api/videos', (req, res) => {
   const { search, category } = req.query;
   const db = readDB();
@@ -215,7 +340,6 @@ app.get('/api/videos', (req, res) => {
   res.json(videos);
 });
 
-// GET /api/videos/:id
 app.get('/api/videos/:id', (req, res) => {
   const db = readDB();
   const video = db.videos.find((v) => v.id === req.params.id);
@@ -257,7 +381,6 @@ app.get('/api/videos/:id/stream', (req, res) => {
   let mimeType = 'video/mp4';
   if (ext === '.webm') mimeType = 'video/webm';
   if (ext === '.mkv') mimeType = 'video/x-matroska';
-  if (ext === '.mov') mimeType = 'video/quicktime';
 
   if (range) {
     const parts = range.replace(/bytes=/, '').split('-');
@@ -419,18 +542,17 @@ app.delete('/api/videos/:id', (req, res) => {
   res.json({ message: 'Video deleted successfully', id: req.params.id });
 });
 
-// Fallback to SPA index.html
 if (fs.existsSync(DIST_DIR)) {
   app.get('*', (req, res) => {
     res.sendFile(path.join(DIST_DIR, 'index.html'));
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
+server.listen(PORT, '0.0.0.0', () => {
   const localIp = getLocalIp();
   console.log(`
   ======================================================
-  🎬 FiveM StreamHub Low-Latency Local VOD Server
+  🎬 FiveM StreamHub WebSocket Real-Time Live Server
   ======================================================
   Local Machine:   http://localhost:${PORT}
   Local Network:   http://${localIp}:${PORT}

@@ -3,5 +3,5 @@ webrtcAdditionalHosts:
 
 paths:
   all_others:
-    runOnPublish: sh /on_publish.sh
-    runOnPublishRestart: no
+    runOnReady: sh /on_publish.sh
+    runOnReadyRestart: no

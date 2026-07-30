@@ -99,68 +99,66 @@ function getLocalIp() {
   return 'localhost';
 }
 
-// Seed Demo VODs if empty
+// Seed Demo VODs with LOCAL mp4 files
 function seedSampleVideos() {
   const db = readDB();
-  if (db.videos.length === 0) {
-    const sampleVideos = [
-      {
-        id: 'demo-big-buck-bunny',
-        title: 'Big Buck Bunny - 4K 60fps FiveM Stream Test',
-        description: 'Open-Source Benchmark Video for FiveM HUD Low-Latency VOD Streaming on Proxmox Intel NUC.',
-        category: 'Movies',
-        duration: 596,
-        views: 1420,
-        likes: 128,
-        dislikes: 2,
-        uploader: 'FiveM StreamHub Node',
-        createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
-        videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4',
-        thumbnailUrl: 'https://images.unsplash.com/photo-1536440136628-849c177e76a1?w=800&q=80',
-        isExternal: true,
-        tags: ['FiveM', '4K', 'Benchmark', 'Proxmox'],
-        comments: [
-          { id: 'c1', user: 'FiveM Admin', text: 'Läuft mit <20ms Seek-Zeit im FiveM NUC Net!', date: new Date().toISOString() }
-        ]
-      },
-      {
-        id: 'demo-sintel',
-        title: 'Sintel Ultra HD - Hardware Accel Test',
-        description: 'VOD Stream für Proxmox VE Hardware-Beschleunigung mit Intel QuickSync QSV/VAAPI.',
-        category: 'Tutorials',
-        duration: 888,
-        views: 890,
-        likes: 95,
-        dislikes: 0,
-        uploader: 'Intel NUC Core',
-        createdAt: new Date(Date.now() - 86400000 * 1).toISOString(),
-        videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4',
-        thumbnailUrl: 'https://images.unsplash.com/photo-1578632767115-351597cf2477?w=800&q=80',
-        isExternal: true,
-        tags: ['Intel NUC', 'FiveM UI', 'QSV'],
-        comments: []
-      },
-      {
-        id: 'demo-tears-of-steel',
-        title: 'Tears of Steel - Sci-Fi 4K HDR Local Stream',
-        description: 'High-speed local network VOD streaming demo across 1Gbps LAN.',
+  // Always verify seed sample files exist on disk
+  const sample1Exists = fs.existsSync(path.join(VIDEOS_DIR, 'sample-demo.mp4'));
+  const sample2Exists = fs.existsSync(path.join(VIDEOS_DIR, 'sample-demo2.mp4'));
+
+  // Update or reset sample VODs if external or broken
+  const updatedVideos = (db.videos || []).filter(v => !v.isExternal);
+
+  if (updatedVideos.length === 0) {
+    const sampleVideos = [];
+
+    if (sample1Exists) {
+      sampleVideos.push({
+        id: 'demo-local-1',
+        title: 'FiveM Ultra HD Stream Showcase - Local 4K VOD',
+        description: 'Echter lokaler Stream-Test von der Proxmox Intel NUC SSD. Ultra-Low-Latency Seek und 100% offline verfügbar.',
         category: 'Gaming',
-        duration: 734,
-        views: 2310,
-        likes: 240,
-        dislikes: 4,
-        uploader: 'FiveM Server Node',
-        createdAt: new Date(Date.now() - 3600000 * 5).toISOString(),
-        videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4',
-        thumbnailUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?w=800&q=80',
-        isExternal: true,
-        tags: ['Sci-Fi', 'LAN', 'Hardware Transcode'],
+        duration: 18,
+        views: 2450,
+        likes: 340,
+        dislikes: 2,
+        uploader: 'FiveM Core Node',
+        createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
+        filename: 'sample-demo.mp4',
+        videoUrl: '/api/videos/demo-local-1/stream',
+        thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
+        isExternal: false,
+        tags: ['FiveM', '4K', 'Proxmox', 'Local VOD'],
+        comments: [
+          { id: 'c1', user: 'FiveM Admin', text: 'Läuft mit <10ms Latenz perfekt im NUC-Netzwerk!', date: new Date().toISOString() }
+        ]
+      });
+    }
+
+    if (sample2Exists) {
+      sampleVideos.push({
+        id: 'demo-local-2',
+        title: 'Intel QuickSync Hardware Transcode Benchmark',
+        description: 'VOD Performance Test für Proxmox VE Hardware-Beschleunigung mit der Intel iGPU.',
+        category: 'Tutorials',
+        duration: 11,
+        views: 1280,
+        likes: 195,
+        dislikes: 0,
+        uploader: 'Proxmox NUC',
+        createdAt: new Date(Date.now() - 86400000).toISOString(),
+        filename: 'sample-demo2.mp4',
+        videoUrl: '/api/videos/demo-local-2/stream',
+        thumbnailUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800&q=80',
+        isExternal: false,
+        tags: ['Intel NUC', 'QSV', 'Low Latency'],
         comments: []
-      }
-    ];
+      });
+    }
+
     db.videos = sampleVideos;
     writeDB(db);
-    console.log('Seeded initial sample VODs.');
+    console.log('Seeded local sample VODs.');
   }
 }
 
@@ -193,7 +191,7 @@ app.get('/api/system/info', (req, res) => {
   });
 });
 
-// GET /api/videos - List all videos
+// GET /api/videos
 app.get('/api/videos', (req, res) => {
   const { search, category } = req.query;
   const db = readDB();
@@ -217,7 +215,7 @@ app.get('/api/videos', (req, res) => {
   res.json(videos);
 });
 
-// GET /api/videos/:id - Single video metadata
+// GET /api/videos/:id
 app.get('/api/videos/:id', (req, res) => {
   const db = readDB();
   const video = db.videos.find((v) => v.id === req.params.id);
@@ -232,7 +230,7 @@ app.get('/api/videos/:id', (req, res) => {
   res.json(video);
 });
 
-// FIXED LOW LATENCY HTTP 206 STREAMING ENDPOINT
+// LOW LATENCY STREAMING ENDPOINT WITH HTTP 206 RANGE STREAMING
 app.get('/api/videos/:id/stream', (req, res) => {
   const db = readDB();
   const video = db.videos.find((v) => v.id === req.params.id);
@@ -255,7 +253,6 @@ app.get('/api/videos/:id/stream', (req, res) => {
   const fileSize = stat.size;
   const range = req.headers.range;
 
-  // Determine mime type
   const ext = path.extname(videoPath).toLowerCase();
   let mimeType = 'video/mp4';
   if (ext === '.webm') mimeType = 'video/webm';
@@ -305,7 +302,7 @@ app.get('/api/videos/:id/stream', (req, res) => {
   }
 });
 
-// POST /api/upload - Upload new VOD
+// POST /api/upload
 app.post(
   '/api/upload',
   upload.fields([
@@ -346,7 +343,7 @@ app.post(
         views: 0,
         likes: 0,
         dislikes: 0,
-        uploader: 'FiveM Local User',
+        uploader: 'FiveM Streamer',
         createdAt: new Date().toISOString(),
         filename: videoFile.filename,
         videoUrl: `/api/videos/${videoId}/stream`,
@@ -433,7 +430,7 @@ app.listen(PORT, '0.0.0.0', () => {
   const localIp = getLocalIp();
   console.log(`
   ======================================================
-  🎬 FiveM StreamHub Low-Latency VOD Server
+  🎬 FiveM StreamHub Low-Latency Local VOD Server
   ======================================================
   Local Machine:   http://localhost:${PORT}
   Local Network:   http://${localIp}:${PORT}

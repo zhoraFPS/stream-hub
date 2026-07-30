@@ -1,24 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Radio, Camera, Mic, MicOff, RefreshCw, Square, ArrowLeft, Send, Copy, CheckCircle2, Monitor, Smartphone, MessageSquare } from 'lucide-react';
+import { Radio, Camera, Mic, MicOff, RefreshCw, Square, ArrowLeft, Send, Copy, CheckCircle2, Monitor, Smartphone, MessageSquare, Users } from 'lucide-react';
 
 export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded }) {
   const [activeTab, setActiveTab] = useState('phone');
-  const [streamTitle, setStreamTitle] = useState('🔴 Handy Live-Stream');
+  const [streamTitle, setStreamTitle] = useState('Live Stream');
   const [isStreaming, setIsStreaming] = useState(false);
   const [cameraActive, setCameraActive] = useState(false);
   const [facingMode, setFacingMode] = useState('user');
   const [isMuted, setIsMuted] = useState(false);
   const [streamDuration, setStreamDuration] = useState(0);
-  const [viewerCount, setViewerCount] = useState(1);
+  const [viewerCount, setViewerCount] = useState(0);
   const [cameraError, setCameraError] = useState(null);
 
-  // Live Chat Messages
-  const [chatMessages, setChatMessages] = useState([
-    { id: 'c1', user: 'System', text: 'Live Studio gestartet. Nachrichten erscheinen hier live!' }
-  ]);
+  const [chatMessages, setChatMessages] = useState([]);
   const [chatText, setChatText] = useState('');
-
-  // OBS Stream Key Info
   const [copiedKey, setCopiedKey] = useState(false);
   const [copiedServer, setCopiedServer] = useState(false);
 
@@ -27,148 +22,99 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
   const mediaRecorderRef = useRef(null);
   const wsRef = useRef(null);
   const timerRef = useRef(null);
+  const chatEndRef = useRef(null);
 
   const currentHost = window.location.hostname || 'localhost';
   const currentPort = window.location.port || '5000';
   const rtmpServerUrl = `rtmp://${currentHost}:1935/live`;
   const streamKey = `streamhub_live_${currentHost.replace(/\./g, '_')}`;
 
+  useEffect(() => {
+    if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [chatMessages]);
+
   const requestCameraAccess = async (targetFacingMode = facingMode) => {
     setCameraError(null);
     try {
-      if (mediaStreamRef.current) {
-        mediaStreamRef.current.getTracks().forEach((t) => t.stop());
+      if (mediaStreamRef.current) mediaStreamRef.current.getTracks().forEach(t => t.stop());
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error('Kamera-Zugriff erfordert HTTPS. Nutze den OBS-Modus oder öffne die Seite über HTTPS.');
       }
-
-      if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-        throw new Error(
-          'iOS Safari Sicherheitsbeschränkung: Für den Kamera-Live-Zugriff benötigt dein iPhone eine HTTPS-Verbindung. Öffne die Seite über https:// oder nutze den OBS-Modus!'
-        );
-      }
-
-      let constraints = {
-        video: { facingMode: targetFacingMode },
-        audio: true,
-      };
-
       let stream;
       try {
-        stream = await navigator.mediaDevices.getUserMedia(constraints);
+        stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: targetFacingMode }, audio: true });
       } catch (e) {
         stream = await navigator.mediaDevices.getUserMedia({ video: true, audio: true });
       }
-
       mediaStreamRef.current = stream;
-
       if (videoPreviewRef.current) {
         videoPreviewRef.current.srcObject = stream;
         videoPreviewRef.current.setAttribute('playsinline', 'true');
         videoPreviewRef.current.setAttribute('muted', 'true');
         await videoPreviewRef.current.play().catch(() => {});
       }
-
       setCameraActive(true);
     } catch (err) {
-      console.error('Camera access error:', err);
       setCameraError(err.message || 'Kamera-Zugriff verweigert.');
     }
   };
 
   const toggleCamera = () => {
-    const newFacingMode = facingMode === 'user' ? 'environment' : 'user';
-    setFacingMode(newFacingMode);
-    requestCameraAccess(newFacingMode);
+    const next = facingMode === 'user' ? 'environment' : 'user';
+    setFacingMode(next);
+    requestCameraAccess(next);
   };
 
   const toggleMute = () => {
     if (mediaStreamRef.current) {
-      mediaStreamRef.current.getAudioTracks().forEach((t) => {
-        t.enabled = isMuted;
-      });
+      mediaStreamRef.current.getAudioTracks().forEach(t => { t.enabled = isMuted; });
       setIsMuted(!isMuted);
     }
   };
 
   const startLiveStream = () => {
-    if (!mediaStreamRef.current) {
-      alert('Bitte tippe zuerst auf "Kamera Freigeben"!');
-      return;
-    }
-
+    if (!mediaStreamRef.current) return;
     try {
       const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-      const wsUrl = `${wsProtocol}//${currentHost}:${currentPort}/live/publish`;
-
-      const ws = new WebSocket(wsUrl);
+      const ws = new WebSocket(`${wsProtocol}//${currentHost}:${currentPort}/live/publish`);
       wsRef.current = ws;
 
       ws.onopen = () => {
-        ws.send(JSON.stringify({
-          type: 'start',
-          title: streamTitle || 'Handy Live Stream',
-          uploader: 'Handy Studio',
-        }));
-
+        ws.send(JSON.stringify({ type: 'start', title: streamTitle || 'Live Stream', uploader: 'Studio' }));
         let mimeType = 'video/webm;codecs=vp8,opus';
         if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
         if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/mp4';
 
-        // 1000ms chunks for smooth 30/60 fps video streaming
-        const mediaRecorder = new MediaRecorder(mediaStreamRef.current, {
-          mimeType,
-          videoBitsPerSecond: 3000000,
-        });
-
-        mediaRecorderRef.current = mediaRecorder;
-
-        mediaRecorder.ondataavailable = (event) => {
-          if (event.data && event.data.size > 0 && ws.readyState === WebSocket.OPEN) {
-            ws.send(event.data);
-          }
+        const recorder = new MediaRecorder(mediaStreamRef.current, { mimeType, videoBitsPerSecond: 3000000 });
+        mediaRecorderRef.current = recorder;
+        recorder.ondataavailable = (e) => {
+          if (e.data?.size > 0 && ws.readyState === WebSocket.OPEN) ws.send(e.data);
         };
-
-        mediaRecorder.start(1000);
+        recorder.start(1000);
         setIsStreaming(true);
         setStreamDuration(0);
-
-        timerRef.current = setInterval(() => {
-          setStreamDuration((prev) => prev + 1);
-        }, 1000);
-
+        timerRef.current = setInterval(() => setStreamDuration(p => p + 1), 1000);
         if (onStreamStarted) onStreamStarted();
       };
 
       ws.onmessage = (event) => {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'viewers') {
-            setViewerCount(msg.count);
-          } else if (msg.type === 'chat') {
-            setChatMessages((prev) => [
-              ...prev,
-              { id: 'c-' + Date.now(), user: msg.user, text: msg.text }
-            ]);
-          }
+          if (msg.type === 'viewers') setViewerCount(msg.count);
+          else if (msg.type === 'chat') setChatMessages(prev => [...prev, { id: 'c-' + Date.now(), user: msg.user, text: msg.text }]);
         } catch (e) {}
       };
-
       ws.onclose = () => stopLiveStream();
-
-    } catch (err) {
-      alert('Fehler: ' + err.message);
-    }
+    } catch (err) { console.error(err); }
   };
 
   const stopLiveStream = () => {
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
-      mediaRecorderRef.current.stop();
-    }
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (mediaRecorderRef.current?.state !== 'inactive') mediaRecorderRef.current?.stop();
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'stop' }));
       wsRef.current.close();
     }
     if (timerRef.current) clearInterval(timerRef.current);
-
     setIsStreaming(false);
     if (onStreamEnded) onStreamEnded();
     onBack();
@@ -177,256 +123,173 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
   const handleSendChat = (e) => {
     e.preventDefault();
     if (!chatText.trim()) return;
-
-    const chatData = { type: 'chat', user: 'Streamer', text: chatText.trim() };
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify(chatData));
-    } else {
-      setChatMessages((prev) => [...prev, { id: 'c-' + Date.now(), user: 'Ich', text: chatText.trim() }]);
-    }
+    const msg = { type: 'chat', user: 'Streamer', text: chatText.trim() };
+    if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify(msg));
+    else setChatMessages(prev => [...prev, { id: 'c-' + Date.now(), user: 'Ich', text: chatText.trim() }]);
     setChatText('');
   };
 
-  const formatTimer = (sec) => {
-    const mins = Math.floor(sec / 60);
-    const secs = sec % 60;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  const fmt = (s) => `${String(Math.floor(s / 60)).padStart(2, '0')}:${String(s % 60).padStart(2, '0')}`;
+
+  const copyToClipboard = (text, setter) => {
+    navigator.clipboard.writeText(text);
+    setter(true);
+    setTimeout(() => setter(false), 2000);
   };
 
   return (
-    <div className="w-full max-w-[1200px] mx-auto px-3 py-3 space-y-4">
-      
+    <div style={{ maxWidth: 1200, margin: '0 auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
+
       {/* Top Bar */}
-      <div className="flex items-center justify-between">
-        <button onClick={onBack} className="btn-secondary text-xs flex items-center gap-2">
-          <ArrowLeft className="w-4 h-4 text-blue-400" />
-          <span>Zurück zur Übersicht</span>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8 }}>
+        <button onClick={onBack} className="btn-secondary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ArrowLeft style={{ width: 14, height: 14 }} /> Zurück
         </button>
 
-        <div className="flex items-center gap-1 bg-black/60 p-1 rounded-md border border-white/10">
-          <button
-            onClick={() => setActiveTab('phone')}
-            className={`px-3 py-1 rounded text-xs font-semibold flex items-center gap-1.5 transition-all ${
-              activeTab === 'phone' ? 'bg-[#0055b8] text-white' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <Smartphone className="w-3.5 h-3.5" />
-            <span>Handy Kamera</span>
-          </button>
-          <button
-            onClick={() => setActiveTab('obs')}
-            className={`px-3 py-1 rounded text-xs font-semibold flex items-center gap-1.5 transition-all ${
-              activeTab === 'obs' ? 'bg-[#0055b8] text-white' : 'text-gray-400 hover:text-white'
-            }`}
-          >
-            <Monitor className="w-3.5 h-3.5" />
-            <span>OBS Studio</span>
-          </button>
+        <div style={{ display: 'flex', background: 'rgba(0,0,0,0.4)', borderRadius: 6, border: '1px solid rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+          {[{ key: 'phone', icon: Smartphone, label: 'Kamera' }, { key: 'obs', icon: Monitor, label: 'OBS' }].map(tab => (
+            <button
+              key={tab.key}
+              onClick={() => setActiveTab(tab.key)}
+              style={{
+                padding: '6px 14px', fontSize: 11, fontWeight: 700, display: 'flex', alignItems: 'center', gap: 5,
+                background: activeTab === tab.key ? '#0055b8' : 'transparent',
+                color: activeTab === tab.key ? '#fff' : '#94a3b8',
+                border: 'none', cursor: 'pointer', transition: 'all 0.15s',
+                textTransform: 'uppercase', letterSpacing: '0.05em',
+              }}
+            >
+              <tab.icon style={{ width: 13, height: 13 }} /> {tab.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {activeTab === 'phone' ? (
-        /* Minimalist Live Camera Studio with Floating Chat Overlay */
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
-          
-          <div className="lg:col-span-2 relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-white/10 flex flex-col justify-between p-4">
-            
-            <video
-              ref={videoPreviewRef}
-              autoPlay
-              muted
-              playsInline
-              className="absolute inset-0 w-full h-full object-cover"
-            />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-black/60 pointer-events-none" />
+        <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }} className="studio-grid">
+          {/* Camera Preview */}
+          <div style={{ position: 'relative', width: '100%', aspectRatio: '16/9', background: '#000', borderRadius: 12, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.08)' }}>
+            <video ref={videoPreviewRef} autoPlay muted playsInline style={{ position: 'absolute', inset: 0, width: '100%', height: '100%', objectFit: 'cover' }} />
 
             {!cameraActive && (
-              <div className="absolute inset-0 bg-black/90 z-30 flex flex-col items-center justify-center p-6 text-center space-y-4">
-                <Camera className="w-12 h-12 text-blue-400" />
-                <h3 className="text-base font-bold text-white uppercase tracking-wider">Handy Kamera Aktivieren</h3>
-                <p className="text-xs text-gray-300 max-w-xs leading-relaxed">
-                  Tippe auf den Button, um Mikrofon und Kamera freizugeben.
+              <div style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.92)', zIndex: 30, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 12, padding: 24 }}>
+                <Camera style={{ width: 36, height: 36, color: '#0055b8' }} />
+                <h3 style={{ fontSize: 14, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Kamera aktivieren</h3>
+                <p style={{ fontSize: 12, color: '#94a3b8', textAlign: 'center', maxWidth: 280 }}>
+                  Tippe auf den Button um Kamera und Mikrofon freizugeben.
                 </p>
-                
                 {cameraError ? (
-                  <div className="p-3 rounded bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-mono">
+                  <div style={{ padding: '8px 14px', borderRadius: 6, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#ef4444', fontSize: 11, fontFamily: 'var(--font-mono)' }}>
                     {cameraError}
                   </div>
                 ) : (
-                  <button
-                    onClick={() => requestCameraAccess()}
-                    className="btn-primary text-sm shadow-xl flex items-center gap-2"
-                  >
-                    <Camera className="w-4 h-4" />
-                    <span>KAMERA FREIGEBEN</span>
+                  <button onClick={() => requestCameraAccess()} className="btn-primary" style={{ fontSize: 12 }}>
+                    <Camera style={{ width: 14, height: 14 }} /> Kamera freigeben
                   </button>
                 )}
               </div>
             )}
 
-            {/* Top Stream Bar */}
-            <div className="relative z-10 flex items-center justify-between text-white text-xs font-semibold">
-              <div className="flex items-center gap-2 bg-black/70 px-3 py-1.5 rounded border border-white/20">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-ping"></span>
-                <span className="font-mono">{isStreaming ? '🔴 LIVE' : 'BEREIT'}</span>
-                {isStreaming && <span>• {formatTimer(streamDuration)}</span>}
+            {/* Top Status Bar */}
+            <div style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.7)', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }}>
+                {isStreaming && <span style={{ width: 7, height: 7, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }}></span>}
+                <span>{isStreaming ? 'LIVE' : 'BEREIT'}</span>
+                {isStreaming && <span style={{ color: '#94a3b8' }}>{fmt(streamDuration)}</span>}
               </div>
-
-              <div className="flex items-center gap-2 bg-black/70 px-3 py-1.5 rounded border border-white/20 font-mono">
-                <span className="text-blue-400">{viewerCount} Zuschauer</span>
-              </div>
-            </div>
-
-            {/* Floating Live Chat Overlay on Camera Screen */}
-            <div className="relative z-10 space-y-2 mt-auto mb-2 max-h-36 overflow-y-auto pr-2 scrollbar-none">
-              {chatMessages.map((c) => (
-                <div key={c.id} className="inline-block bg-black/70 backdrop-blur-md px-3 py-1 rounded text-xs text-white border border-white/10 max-w-[90%] shadow-lg">
-                  <span className="font-bold text-blue-400 mr-1.5">{c.user}:</span>
-                  <span>{c.text}</span>
+              {isStreaming && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.7)', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontFamily: 'var(--font-mono)', color: '#94a3b8', border: '1px solid rgba(255,255,255,0.15)' }}>
+                  <Users style={{ width: 12, height: 12 }} /> {viewerCount}
                 </div>
-              ))}
+              )}
             </div>
+
+            {/* Chat Overlay */}
+            {isStreaming && chatMessages.length > 0 && (
+              <div style={{ position: 'absolute', bottom: 64, left: 12, right: 12, zIndex: 10, maxHeight: 120, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 3 }}>
+                {chatMessages.slice(-8).map(c => (
+                  <div key={c.id} style={{ display: 'inline-block', background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(8px)', padding: '3px 8px', borderRadius: 4, fontSize: 11, color: '#fff', maxWidth: '90%' }}>
+                    <span style={{ fontWeight: 700, color: '#60a5fa', marginRight: 4 }}>{c.user}:</span>
+                    <span>{c.text}</span>
+                  </div>
+                ))}
+                <div ref={chatEndRef} />
+              </div>
+            )}
 
             {/* Bottom Controls */}
-            <div className="relative z-10 space-y-3">
-              <div className="flex items-center gap-2 pt-2">
-                {!isStreaming ? (
-                  <button
-                    onClick={startLiveStream}
-                    disabled={!cameraActive}
-                    className="flex-1 btn-primary text-xs py-3 justify-center shadow-lg disabled:opacity-50"
-                  >
-                    <Radio className="w-4 h-4 animate-pulse" />
-                    <span>🔴 LIVE STREAM STARTEN</span>
-                  </button>
-                ) : (
-                  <button
-                    onClick={stopLiveStream}
-                    className="flex-1 py-3 rounded bg-red-600 text-white font-bold text-xs flex items-center justify-center gap-2 shadow-lg hover:bg-red-700"
-                  >
-                    <Square className="w-4 h-4 fill-white" />
-                    <span>STREAM BEENDEN</span>
-                  </button>
-                )}
-
-                <button
-                  onClick={toggleCamera}
-                  className="p-3 rounded bg-black/70 border border-white/20 text-white hover:bg-black"
-                  title="Kamera wechseln"
-                >
-                  <RefreshCw className="w-4 h-4 text-blue-400" />
+            <div style={{ position: 'absolute', bottom: 12, left: 12, right: 12, zIndex: 10, display: 'flex', gap: 8 }}>
+              {!isStreaming ? (
+                <button onClick={startLiveStream} disabled={!cameraActive} className="btn-primary" style={{ flex: 1, justifyContent: 'center', padding: '10px 0', fontSize: 12, opacity: cameraActive ? 1 : 0.4 }}>
+                  <Radio style={{ width: 14, height: 14 }} /> Live starten
                 </button>
-
-                <button
-                  onClick={toggleMute}
-                  className="p-3 rounded bg-black/70 border border-white/20 text-white hover:bg-black"
-                  title="Mikrofon stummschalten"
-                >
-                  {isMuted ? <MicOff className="w-4 h-4 text-red-400" /> : <Mic className="w-4 h-4 text-emerald-400" />}
+              ) : (
+                <button onClick={stopLiveStream} style={{ flex: 1, padding: '10px 0', borderRadius: 6, background: '#dc2626', color: '#fff', border: 'none', fontSize: 12, fontWeight: 700, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
+                  <Square style={{ width: 14, height: 14, fill: '#fff' }} /> Beenden
                 </button>
-              </div>
+              )}
+              <button onClick={toggleCamera} style={{ padding: 10, borderRadius: 6, background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer' }}>
+                <RefreshCw style={{ width: 14, height: 14, color: '#60a5fa' }} />
+              </button>
+              <button onClick={toggleMute} style={{ padding: 10, borderRadius: 6, background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer' }}>
+                {isMuted ? <MicOff style={{ width: 14, height: 14, color: '#ef4444' }} /> : <Mic style={{ width: 14, height: 14, color: '#34d399' }} />}
+              </button>
             </div>
-
           </div>
 
-          {/* Live Chat Control Panel */}
-          <div className="glass-panel p-5 space-y-4">
-            <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-white border-b border-white/10 pb-3 font-mono">
-              <MessageSquare className="w-4 h-4 text-blue-400" />
-              <span>Live Chat Overlay</span>
+          {/* Chat & Settings Panel */}
+          <div className="glass-panel" style={{ padding: 16, display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: 10, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#fff', fontFamily: 'var(--font-mono)' }}>
+              <MessageSquare style={{ width: 14, height: 14, color: '#0055b8' }} /> Stream Einstellungen
             </div>
 
-            <div className="space-y-2">
-              <label className="text-xs text-gray-300 block">Stream Titel</label>
-              <input
-                type="text"
-                value={streamTitle}
-                onChange={(e) => setStreamTitle(e.target.value)}
-                placeholder="Live Titel..."
-                className="w-full bg-black/50 border border-white/15 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
+            <div>
+              <label style={{ fontSize: 11, color: '#94a3b8', display: 'block', marginBottom: 4 }}>Titel</label>
+              <input type="text" value={streamTitle} onChange={e => setStreamTitle(e.target.value)} placeholder="Stream Titel..."
+                style={{ width: '100%', background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '7px 10px', fontSize: 12, color: '#fff', outline: 'none' }}
               />
             </div>
 
-            {/* Streamer Live Chat Input */}
-            <form onSubmit={handleSendChat} className="space-y-2 pt-2 border-t border-white/10">
-              <label className="text-xs text-gray-300 block">Chat Nachricht absenden</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  value={chatText}
-                  onChange={(e) => setChatText(e.target.value)}
-                  placeholder="Antworten..."
-                  className="flex-1 bg-black/50 border border-white/15 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-                />
-                <button type="submit" className="btn-primary text-xs px-3">
-                  <Send className="w-3.5 h-3.5" />
-                </button>
-              </div>
+            <form onSubmit={handleSendChat} style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10, display: 'flex', gap: 6 }}>
+              <input type="text" value={chatText} onChange={e => setChatText(e.target.value)} placeholder="Chat Nachricht..."
+                style={{ flex: 1, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '7px 10px', fontSize: 12, color: '#fff', outline: 'none' }}
+              />
+              <button type="submit" className="btn-primary" style={{ fontSize: 12, padding: '7px 12px' }}>
+                <Send style={{ width: 13, height: 13 }} />
+              </button>
             </form>
           </div>
-
         </div>
       ) : (
-        /* OBS Studio Stream Key Integration */
-        <div className="glass-panel p-6 space-y-6 max-w-2xl mx-auto">
-          <div className="flex items-center gap-3 border-b border-white/10 pb-4">
-            <div className="w-10 h-10 rounded bg-blue-600/20 border border-blue-500/40 flex items-center justify-center text-blue-400">
-              <Monitor className="w-5 h-5" />
+        /* OBS Tab */
+        <div className="glass-panel" style={{ padding: 24, maxWidth: 560, margin: '0 auto', width: '100%' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 12, borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: 16, marginBottom: 16 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 8, background: 'rgba(0,85,184,0.15)', border: '1px solid rgba(0,85,184,0.3)', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#0055b8' }}>
+              <Monitor style={{ width: 18, height: 18 }} />
             </div>
             <div>
-              <h2 className="text-base font-bold text-white uppercase tracking-wider">OBS Studio Einbindung</h2>
-              <p className="text-xs text-gray-400">Streame direkt von deinem PC mit OBS Studio auf deinen NUC</p>
+              <h2 style={{ fontSize: 14, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>OBS Studio</h2>
+              <p style={{ fontSize: 11, color: '#64748b' }}>Streame direkt von deinem PC</p>
             </div>
           </div>
 
-          <div className="space-y-4">
-            <div>
-              <label className="text-xs font-semibold text-gray-300 block mb-1">Server URL (RTMP)</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={rtmpServerUrl}
-                  className="flex-1 bg-black/50 border border-white/15 rounded-md px-3 py-2 text-xs font-mono text-blue-400 outline-none"
+          {[{ label: 'Server URL (RTMP)', value: rtmpServerUrl, copied: copiedServer, setCopied: setCopiedServer },
+            { label: 'Stream Key', value: streamKey, copied: copiedKey, setCopied: setCopiedKey }
+          ].map(field => (
+            <div key={field.label} style={{ marginBottom: 12 }}>
+              <label style={{ fontSize: 11, fontWeight: 600, color: '#94a3b8', display: 'block', marginBottom: 4 }}>{field.label}</label>
+              <div style={{ display: 'flex', gap: 6 }}>
+                <input type="text" readOnly value={field.value}
+                  style={{ flex: 1, background: 'rgba(0,0,0,0.4)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 6, padding: '7px 10px', fontSize: 11, fontFamily: 'var(--font-mono)', color: '#60a5fa', outline: 'none' }}
                 />
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(rtmpServerUrl);
-                    setCopiedServer(true);
-                    setTimeout(() => setCopiedServer(false), 2000);
-                  }}
-                  className="btn-secondary text-xs"
-                >
-                  {copiedServer ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                <button onClick={() => copyToClipboard(field.value, field.setCopied)} className="btn-secondary" style={{ fontSize: 11, padding: '7px 10px' }}>
+                  {field.copied ? <CheckCircle2 style={{ width: 14, height: 14, color: '#34d399' }} /> : <Copy style={{ width: 14, height: 14 }} />}
                 </button>
               </div>
             </div>
-
-            <div>
-              <label className="text-xs font-semibold text-gray-300 block mb-1">Stream-Schlüssel (Stream Key)</label>
-              <div className="flex gap-2">
-                <input
-                  type="text"
-                  readOnly
-                  value={streamKey}
-                  className="flex-1 bg-black/50 border border-white/15 rounded-md px-3 py-2 text-xs font-mono text-blue-400 outline-none"
-                />
-                <button
-                  onClick={() => {
-                    navigator.clipboard.writeText(streamKey);
-                    setCopiedKey(true);
-                    setTimeout(() => setCopiedKey(false), 2000);
-                  }}
-                  className="btn-secondary text-xs"
-                >
-                  {copiedKey ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-          </div>
+          ))}
         </div>
       )}
-
     </div>
   );
 }

@@ -7,264 +7,176 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
   const sourceBufferRef = useRef(null);
   const bufferQueueRef = useRef([]);
   const wsRef = useRef(null);
+  const chatEndRef = useRef(null);
 
-  const [viewerCount, setViewerCount] = useState(liveStreamInfo?.viewers || 1);
+  const [viewerCount, setViewerCount] = useState(liveStreamInfo?.viewers || 0);
   const [isMuted, setIsMuted] = useState(true);
   const [isPlaying, setIsPlaying] = useState(false);
-  const [comments, setComments] = useState([
-    { id: 'c1', user: 'System', text: 'Willkommen im Live-Stream!', date: new Date().toISOString() }
-  ]);
+  const [comments, setComments] = useState([]);
   const [commentText, setCommentText] = useState('');
   const [commentUser, setCommentUser] = useState('');
 
-  // Smooth playback seek (allows 1.5 - 2s natural buffer delay for butter-smooth 60fps)
   const jumpToLiveEdgeIfNeeded = () => {
-    if (videoRef.current && videoRef.current.buffered.length > 0) {
-      const liveEnd = videoRef.current.buffered.end(videoRef.current.buffered.length - 1);
-      // Only seek if latency falls behind by more than 3.5 seconds
-      if (liveEnd - videoRef.current.currentTime > 3.5) {
-        videoRef.current.currentTime = Math.max(0, liveEnd - 1.5);
+    if (videoRef.current?.buffered?.length > 0) {
+      const end = videoRef.current.buffered.end(videoRef.current.buffered.length - 1);
+      if (end - videoRef.current.currentTime > 3.5) {
+        videoRef.current.currentTime = Math.max(0, end - 1.5);
       }
     }
   };
 
-  // Process incoming buffer queue into SourceBuffer
   const processQueue = () => {
     const sb = sourceBufferRef.current;
     if (sb && !sb.updating && bufferQueueRef.current.length > 0) {
       try {
-        const nextBuffer = bufferQueueRef.current.shift();
-        sb.appendBuffer(nextBuffer);
-
-        if (videoRef.current && videoRef.current.paused) {
-          videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-        }
-      } catch (err) {
-        console.warn('SourceBuffer append error:', err);
-      }
+        sb.appendBuffer(bufferQueueRef.current.shift());
+        if (videoRef.current?.paused) videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+      } catch (err) { console.warn('Buffer error:', err); }
     }
   };
 
   useEffect(() => {
-    const mediaSource = new MediaSource();
-    mediaSourceRef.current = mediaSource;
+    const ms = new MediaSource();
+    mediaSourceRef.current = ms;
+    if (videoRef.current) videoRef.current.src = URL.createObjectURL(ms);
 
-    if (videoRef.current) {
-      videoRef.current.src = URL.createObjectURL(mediaSource);
-    }
-
-    mediaSource.addEventListener('sourceopen', () => {
+    ms.addEventListener('sourceopen', () => {
       try {
-        let mimeType = 'video/webm;codecs=vp8,opus';
-        if (!MediaSource.isTypeSupported(mimeType)) mimeType = 'video/webm';
-        if (!MediaSource.isTypeSupported(mimeType)) mimeType = 'video/mp4';
-
-        const sourceBuffer = mediaSource.addSourceBuffer(mimeType);
-        sourceBufferRef.current = sourceBuffer;
-        sourceBuffer.mode = 'sequence';
-
-        sourceBuffer.addEventListener('updateend', () => {
-          processQueue();
-          jumpToLiveEdgeIfNeeded();
-        });
-      } catch (err) {
-        console.error('MediaSource error:', err);
-      }
+        let mime = 'video/webm;codecs=vp8,opus';
+        if (!MediaSource.isTypeSupported(mime)) mime = 'video/webm';
+        if (!MediaSource.isTypeSupported(mime)) mime = 'video/mp4';
+        const sb = ms.addSourceBuffer(mime);
+        sourceBufferRef.current = sb;
+        sb.mode = 'sequence';
+        sb.addEventListener('updateend', () => { processQueue(); jumpToLiveEdgeIfNeeded(); });
+      } catch (e) { console.error('MediaSource:', e); }
     });
 
-    // Connect WebSocket Live Viewer
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsHost = window.location.hostname || 'localhost';
-    const wsPort = window.location.port || '5000';
-    const wsUrl = `${wsProtocol}//${wsHost}:${wsPort}/live/watch`;
-
-    const ws = new WebSocket(wsUrl);
+    const ws = new WebSocket(`${wsProtocol}//${window.location.hostname || 'localhost'}:${window.location.port || '5000'}/live/watch`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
       if (typeof event.data === 'string') {
         try {
           const msg = JSON.parse(event.data);
-          if (msg.type === 'viewers') {
-            setViewerCount(msg.count);
-          } else if (msg.type === 'chat') {
-            setComments((prev) => [
-              { id: 'c-' + Date.now(), user: msg.user, text: msg.text, date: new Date().toISOString() },
-              ...prev
-            ]);
-          }
+          if (msg.type === 'viewers') setViewerCount(msg.count);
+          else if (msg.type === 'chat') setComments(prev => [...prev, { id: 'c-' + Date.now(), user: msg.user, text: msg.text }]);
         } catch (e) {}
       } else if (event.data instanceof Blob) {
-        event.data.arrayBuffer().then((buffer) => {
-          bufferQueueRef.current.push(buffer);
-          processQueue();
-        });
+        event.data.arrayBuffer().then(buf => { bufferQueueRef.current.push(buf); processQueue(); });
       }
     };
 
-    return () => {
-      if (wsRef.current) wsRef.current.close();
-    };
+    return () => { if (wsRef.current) wsRef.current.close(); };
   }, []);
 
-  const handleManualPlay = () => {
-    if (videoRef.current) {
-      videoRef.current.play().then(() => {
-        setIsPlaying(true);
-        jumpToLiveEdgeIfNeeded();
-      }).catch(() => {});
-    }
+  useEffect(() => {
+    if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });
+  }, [comments]);
+
+  const handlePlay = () => {
+    if (videoRef.current) videoRef.current.play().then(() => { setIsPlaying(true); jumpToLiveEdgeIfNeeded(); }).catch(() => {});
   };
 
   const handleCommentSubmit = (e) => {
     e.preventDefault();
     if (!commentText.trim()) return;
-
     const user = commentUser.trim() || 'Zuschauer';
-    const text = commentText.trim();
-
-    // Send real-time chat via WebSocket to streamer phone & all viewers!
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
-      wsRef.current.send(JSON.stringify({ type: 'chat', user, text }));
-    } else {
-      setComments((prev) => [
-        { id: 'c-' + Date.now(), user, text, date: new Date().toISOString() },
-        ...prev
-      ]);
-    }
-
+    if (wsRef.current?.readyState === WebSocket.OPEN) wsRef.current.send(JSON.stringify({ type: 'chat', user, text: commentText.trim() }));
+    else setComments(prev => [...prev, { id: 'c-' + Date.now(), user, text: commentText.trim() }]);
     setCommentText('');
   };
 
   return (
-    <div className="w-full max-w-[1440px] mx-auto px-3 py-3 space-y-4">
-      
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <button onClick={onBack} className="btn-secondary text-xs flex items-center gap-2">
-          <ArrowLeft className="w-4 h-4 text-blue-400" />
-          <span>Zurück zur Übersicht</span>
-        </button>
+    <div style={{ maxWidth: 1440, margin: '0 auto', padding: 16, display: 'flex', flexDirection: 'column', gap: 16 }}>
 
-        <div className="flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-white font-mono text-xs font-bold shadow-lg animate-pulse">
-          <Radio className="w-3.5 h-3.5" />
-          <span>🔴 LIVE STREAM (FLÜSSIG 60 FPS)</span>
+      {/* Header */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <button onClick={onBack} className="btn-secondary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+          <ArrowLeft style={{ width: 14, height: 14 }} /> Zurück
+        </button>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 4, background: '#dc2626', color: '#fff', fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)' }}>
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff', animation: 'pulse 2s infinite' }}></span>
+          LIVE
         </div>
       </div>
 
-      {/* Main Grid */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        
-        {/* Live Video Canvas */}
-        <div className="lg:col-span-2 space-y-4">
-          <div className="relative bg-black rounded-xl overflow-hidden aspect-video shadow-2xl border border-white/10 group flex items-center justify-center">
-            
-            <video
-              ref={videoRef}
-              autoPlay
-              playsInline
-              muted={isMuted}
-              className="w-full h-full object-contain"
-            />
+      {/* Main Layout */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr', gap: 16 }} className="live-grid">
 
-            {!isPlaying && (
-              <button
-                onClick={handleManualPlay}
-                className="absolute inset-0 bg-black/60 z-20 flex flex-col items-center justify-center space-y-3 cursor-pointer"
-              >
-                <div className="w-16 h-16 rounded-full bg-[#0055b8] text-white flex items-center justify-center shadow-2xl animate-pulse">
-                  <Play className="w-8 h-8 fill-white ml-1" />
-                </div>
-                <span className="text-xs font-bold text-white uppercase tracking-wider">LIVE STREAM ABSPIELEN</span>
-              </button>
-            )}
+        {/* Video Player */}
+        <div style={{ position: 'relative', background: '#000', borderRadius: 12, overflow: 'hidden', aspectRatio: '16/9', border: '1px solid rgba(255,255,255,0.08)' }}>
+          <video ref={videoRef} autoPlay playsInline muted={isMuted} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
 
-            {/* Live Indicator Overlay */}
-            <div className="absolute top-3 left-3 z-10 flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-white text-xs font-mono font-bold border border-red-400">
-              <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
-              <span>LIVE BROADCAST</span>
-              <span>•</span>
-              <span className="flex items-center gap-1">
-                <Users className="w-3.5 h-3.5" />
-                {viewerCount} Zuschauer
-              </span>
-            </div>
+          {!isPlaying && (
+            <button onClick={handlePlay} style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 20, border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+              <div style={{ width: 56, height: 56, borderRadius: '50%', background: '#0055b8', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 24px rgba(0,85,184,0.4)' }}>
+                <Play style={{ width: 24, height: 24, color: '#fff', fill: '#fff', marginLeft: 3 }} />
+              </div>
+              <span style={{ fontSize: 11, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Stream abspielen</span>
+            </button>
+          )}
 
-            {/* Mute Controls */}
-            <div className="absolute bottom-3 right-3 z-10 flex items-center gap-2">
-              <button
-                onClick={() => setIsMuted(!isMuted)}
-                className="p-2 rounded bg-black/70 text-white hover:bg-black transition-all border border-white/20"
-              >
-                {isMuted ? <VolumeX className="w-4 h-4 text-red-400" /> : <Volume2 className="w-4 h-4 text-emerald-400" />}
-              </button>
-            </div>
+          {/* Live Badge */}
+          <div style={{ position: 'absolute', top: 12, left: 12, zIndex: 10, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(0,0,0,0.7)', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 700, fontFamily: 'var(--font-mono)', color: '#fff', border: '1px solid rgba(255,255,255,0.15)' }}>
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 6px #ef4444' }}></span>
+            LIVE
+            <span style={{ color: '#94a3b8', display: 'flex', alignItems: 'center', gap: 4 }}>
+              <Users style={{ width: 12, height: 12 }} /> {viewerCount}
+            </span>
           </div>
 
-          {/* Details */}
-          <div className="glass-panel p-5 space-y-3">
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <div>
-                <h1 className="text-lg font-bold text-white tracking-tight">
-                  {liveStreamInfo?.title || '🔴 Live-Stream'}
-                </h1>
-                <p className="text-xs text-blue-400 font-mono mt-0.5">
-                  Proxmox NUC Real-Time Channel
-                </p>
-              </div>
+          {/* Volume */}
+          <button onClick={() => setIsMuted(!isMuted)} style={{ position: 'absolute', bottom: 12, right: 12, zIndex: 10, padding: 8, borderRadius: 6, background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer' }}>
+            {isMuted ? <VolumeX style={{ width: 16, height: 16, color: '#ef4444' }} /> : <Volume2 style={{ width: 16, height: 16, color: '#34d399' }} />}
+          </button>
+        </div>
 
-              <div className="px-3 py-1 rounded bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-mono">
-                Puffer-Latenz: ~1.5 Sekunden (Flüssige 60 FPS)
-              </div>
-            </div>
-
-            <p className="text-xs text-gray-300">
-              Echtzeit-Kamera-Übertragung. Nach Beendigung des Streams wird die Aufzeichnung automatisch als VOD in der Mediathek gespeichert.
-            </p>
-          </div>
+        {/* Stream Info */}
+        <div className="glass-panel" style={{ padding: 16 }}>
+          <h1 style={{ fontSize: 16, fontWeight: 800, color: '#fff', marginBottom: 4 }}>
+            {liveStreamInfo?.title || 'Live Stream'}
+          </h1>
+          <p style={{ fontSize: 12, color: '#64748b' }}>
+            {liveStreamInfo?.uploader || 'Streamer'} &middot; Echtzeit-Übertragung
+          </p>
         </div>
 
         {/* Live Chat */}
-        <div className="glass-panel p-4 flex flex-col h-[500px]">
-          <div className="flex items-center gap-2 font-bold text-xs uppercase tracking-wider text-white border-b border-white/10 pb-3 mb-3 font-mono">
-            <MessageSquare className="w-4 h-4 text-red-500 animate-pulse" />
-            <span>Echtzeit Live Chat</span>
+        <div className="glass-panel" style={{ padding: 16, display: 'flex', flexDirection: 'column', height: 360 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 6, borderBottom: '1px solid rgba(255,255,255,0.08)', paddingBottom: 10, marginBottom: 10, fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em', color: '#fff', fontFamily: 'var(--font-mono)' }}>
+            <MessageSquare style={{ width: 14, height: 14, color: '#0055b8' }} /> Live Chat
           </div>
 
-          <div className="flex-1 overflow-y-auto space-y-2 pr-1">
-            {comments.map((c) => (
-              <div key={c.id} className="p-2 rounded bg-white/[0.03] border border-white/5 space-y-0.5 text-xs">
-                <span className="font-bold text-blue-400">{c.user}:</span>
-                <span className="text-gray-200 ml-1">{c.text}</span>
+          <div style={{ flex: 1, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, paddingRight: 4 }}>
+            {comments.length === 0 && (
+              <p style={{ fontSize: 11, color: '#475569', textAlign: 'center', marginTop: 24 }}>Noch keine Nachrichten</p>
+            )}
+            {comments.map(c => (
+              <div key={c.id} style={{ padding: '4px 8px', borderRadius: 4, background: 'rgba(255,255,255,0.03)', fontSize: 12 }}>
+                <span style={{ fontWeight: 700, color: '#60a5fa', marginRight: 4 }}>{c.user}:</span>
+                <span style={{ color: '#e2e8f0' }}>{c.text}</span>
               </div>
             ))}
+            <div ref={chatEndRef} />
           </div>
 
-          <form onSubmit={handleCommentSubmit} className="pt-3 border-t border-white/10 space-y-2">
-            <input
-              type="text"
-              placeholder="Dein Name..."
-              value={commentUser}
-              onChange={(e) => setCommentUser(e.target.value)}
-              className="w-full bg-black/40 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-blue-500"
+          <form onSubmit={handleCommentSubmit} style={{ borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 10, display: 'flex', flexDirection: 'column', gap: 6 }}>
+            <input type="text" placeholder="Dein Name..." value={commentUser} onChange={e => setCommentUser(e.target.value)}
+              style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', fontSize: 11, color: '#fff', outline: 'none' }}
             />
-            <div className="flex gap-2">
-              <input
-                type="text"
-                placeholder="Nachricht an den Streamer auf dem Handy..."
-                value={commentText}
-                onChange={(e) => setCommentText(e.target.value)}
-                className="flex-1 bg-black/40 border border-white/10 rounded px-2.5 py-1.5 text-xs text-white outline-none focus:border-blue-500"
+            <div style={{ display: 'flex', gap: 6 }}>
+              <input type="text" placeholder="Nachricht..." value={commentText} onChange={e => setCommentText(e.target.value)}
+                style={{ flex: 1, background: 'rgba(0,0,0,0.3)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 6, padding: '6px 10px', fontSize: 11, color: '#fff', outline: 'none' }}
               />
-              <button type="submit" className="btn-primary text-xs px-3">
-                <Send className="w-3.5 h-3.5" />
+              <button type="submit" className="btn-primary" style={{ fontSize: 11, padding: '6px 10px' }}>
+                <Send style={{ width: 13, height: 13 }} />
               </button>
             </div>
           </form>
         </div>
-
       </div>
-
     </div>
   );
 }

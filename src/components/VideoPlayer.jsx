@@ -1,8 +1,8 @@
 import React, { useRef, useState, useEffect } from 'react';
 import {
   Play, Pause, Volume2, VolumeX, Maximize, RotateCcw,
-  RotateCw, ThumbsUp, Share2, MessageSquare, Send, Sparkles,
-  ArrowLeft, CheckCircle2, Tv, ShieldCheck, Download
+  RotateCw, ThumbsUp, Share2, MessageSquare, Send,
+  ArrowLeft, CheckCircle2, Tv, Download
 } from 'lucide-react';
 import { formatDuration, formatViews, formatTimeAgo } from '../utils/formatters';
 
@@ -167,7 +167,7 @@ export default function VideoPlayer({ video, allVideos, onSelectVideo, onBack, o
   const handleCommentSubmit = (e) => {
     e.preventDefault();
     if (!commentText.trim()) return;
-    onAddComment(video.id, commentUser || 'FiveM User', commentText.trim());
+    onAddComment(video.id, commentUser || 'Zuschauer', commentText.trim());
     setCommentText('');
   };
 
@@ -186,9 +186,8 @@ export default function VideoPlayer({ video, allVideos, onSelectVideo, onBack, o
           <span>Zurück zur VOD-Übersicht</span>
         </button>
 
-        <div className="flex items-center gap-2 px-3 py-1 rounded-md bg-blue-500/10 border border-blue-500/30 text-blue-400 text-xs font-semibold">
-          <ShieldCheck className="w-3.5 h-3.5" />
-          Proxmox Intel QSV Ultra Low-Latency Stream
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, background: 'rgba(0,85,184,0.1)', border: '1px solid rgba(0,85,184,0.3)', color: '#60a5fa', fontSize: 11, fontWeight: 600 }}>
+          VOD Aufzeichnung
         </div>
       </div>
 
@@ -226,14 +225,13 @@ export default function VideoPlayer({ video, allVideos, onSelectVideo, onBack, o
               
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-blue-600/20 border border-blue-500/40 flex items-center justify-center font-bold text-sm text-blue-400">
-                  {video.uploader ? video.uploader.substring(0, 2).toUpperCase() : '5M'}
+                  {video.uploader ? video.uploader.substring(0, 2).toUpperCase() : 'SH'}
                 </div>
                 <div>
                   <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-sm text-white">{video.uploader || 'FiveM Core'}</span>
-                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    <span className="font-bold text-sm text-white">{video.uploader || 'StreamHub'}</span>
                   </div>
-                  <p className="text-xs text-gray-400">Proxmox Local VOD Server</p>
+                  <p className="text-xs text-gray-400">VOD Mediathek</p>
                 </div>
               </div>
 
@@ -355,8 +353,8 @@ export default function VideoPlayer({ video, allVideos, onSelectVideo, onBack, o
         {/* Right Column: Recommended VODs List */}
         <div className="space-y-3">
           <h3 className="font-bold text-sm text-white flex items-center gap-2">
-            <Tv className="w-4 h-4 text-cyan-400" />
-            <span>Weitere VODs aus der Mediathek</span>
+            <Tv className="w-4 h-4" style={{ color: 'var(--accent)' }} />
+            <span>Weitere VODs</span>
           </h3>
 
           <div className="space-y-2.5">
@@ -373,7 +371,7 @@ export default function VideoPlayer({ video, allVideos, onSelectVideo, onBack, o
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className="font-semibold text-xs text-white line-clamp-2 leading-snug">{rec.title}</h4>
-                    <p className="text-[11px] text-gray-400 mt-1 truncate">{rec.uploader || 'Proxmox VOD'}</p>
+                    <p className="text-[11px] text-gray-400 mt-1 truncate">{rec.uploader || 'VOD'}</p>
                     <p className="text-[10px] text-gray-500 font-mono mt-0.5">{formatViews(rec.views)}</p>
                   </div>
                 </div>

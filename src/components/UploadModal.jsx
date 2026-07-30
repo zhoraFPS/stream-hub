@@ -139,7 +139,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
         <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10">
           <div className="flex items-center gap-2">
             <Film className="w-5 h-5 text-blue-400" />
-            <h2 className="font-bold text-base text-white">VOD / Handy-Stream Hochladen</h2>
+            <h2 className="font-bold text-base text-white">Video hochladen</h2>
           </div>
           <button
             onClick={onClose}
@@ -190,7 +190,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
                 className="w-full btn-secondary text-xs flex items-center justify-center gap-2 border-dashed border-cyan-500/40 text-cyan-400 bg-cyan-500/5 hover:bg-cyan-500/15"
               >
                 <Camera className="w-4 h-4 text-cyan-400" />
-                <span>📱 Mit Handy-Kamera jetzt aufnehmen & live streamen</span>
+                <span>Mit Kamera aufnehmen</span>
               </button>
               <input
                 ref={cameraInputRef}
@@ -294,7 +294,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
                   <option value="Gaming">Gaming Streams</option>
                   <option value="Movies">Filme & Clips</option>
                   <option value="Tutorials">Tutorials & Tech</option>
-                  <option value="Proxmox">Proxmox / NUC</option>
+                  <option value="Proxmox">Server</option>
                   <option value="General">Sonstiges</option>
                 </select>
               </div>
@@ -327,7 +327,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
           {isUploading && (
             <div className="space-y-1">
               <div className="flex justify-between text-[11px] text-gray-300 font-mono">
-                <span>Wird an Proxmox NUC gesendet...</span>
+                <span>Wird hochgeladen...</span>
                 <span>{uploadProgress}%</span>
               </div>
               <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
@@ -360,7 +360,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
                   Übertrage...
                 </>
               ) : (
-                'VOD Hochladen & Live Streamen'
+                'Hochladen'
               )}
             </button>
           </div>

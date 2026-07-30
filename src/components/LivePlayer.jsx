@@ -1,5 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Radio, Users, Volume2, VolumeX, ArrowLeft, MessageSquare, Send, Play } from 'lucide-react';
+import flvjs from 'flv.js';
+import Hls from 'hls.js';
 
 export default function LivePlayer({ liveStreamInfo, onBack }) {
   const videoRef = useRef(null);
@@ -36,39 +38,73 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
   };
 
   useEffect(() => {
-    // Safely check for MediaSource support (iOS Safari doesn't support MediaSource for WebM MSE)
-    const hasMediaSource = typeof window !== 'undefined' && 'MediaSource' in window && typeof window.MediaSource === 'function';
+    const isObs = liveStreamInfo?.id === 'live-obs';
+    const host = window.location.hostname || 'localhost';
+    let flvPlayer = null;
+    let hlsPlayer = null;
 
-    if (hasMediaSource) {
-      try {
-        const ms = new window.MediaSource();
-        mediaSourceRef.current = ms;
-        if (videoRef.current) videoRef.current.src = URL.createObjectURL(ms);
+    if (isObs) {
+      // OBS Stream Playback (HTTP-FLV & HLS)
+      const flvUrl = `http://${host}:8000/live/streamhub_live.flv`;
+      const hlsUrl = `http://${host}:8000/live/streamhub_live/index.m3u8`;
 
-        ms.addEventListener('sourceopen', () => {
-          try {
-            let mime = 'video/webm;codecs=vp8,opus';
-            if (!window.MediaSource.isTypeSupported(mime)) mime = 'video/webm';
-            if (!window.MediaSource.isTypeSupported(mime)) mime = 'video/mp4';
-            const sb = ms.addSourceBuffer(mime);
-            sourceBufferRef.current = sb;
-            sb.mode = 'sequence';
-            sb.addEventListener('updateend', () => { processQueue(); jumpToLiveEdgeIfNeeded(); });
-          } catch (e) { console.error('MediaSource buffer init:', e); }
+      if (flvjs.isSupported()) {
+        flvPlayer = flvjs.createPlayer({
+          type: 'flv',
+          url: flvUrl,
+          isLive: true,
+          hasAudio: true,
+          hasVideo: true,
         });
-      } catch (e) {
-        console.error('MediaSource creation error:', e);
+        if (videoRef.current) {
+          flvPlayer.attachMediaElement(videoRef.current);
+          flvPlayer.load();
+          flvPlayer.play().then(() => setIsPlaying(true)).catch(() => {});
+        }
+      } else if (Hls.isSupported()) {
+        hlsPlayer = new Hls({ enableWorker: true });
+        hlsPlayer.loadSource(hlsUrl);
+        if (videoRef.current) {
+          hlsPlayer.attachMedia(videoRef.current);
+          hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
+            videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+          });
+        }
+      } else if (videoRef.current?.canPlayType('application/vnd.apple.mpegurl')) {
+        // Native HLS for Safari on iPhone
+        videoRef.current.src = hlsUrl;
+        videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
       }
     } else {
-      console.warn('MediaSource API is not supported on this browser (e.g. iOS Safari).');
-      if (videoRef.current) {
-        // Fallback for HLS or direct HTTP live stream
-        videoRef.current.src = `/api/live/stream.m3u8`;
+      // Handy Camera Stream (WebSocket Buffer Queue)
+      const hasMediaSource = typeof window !== 'undefined' && 'MediaSource' in window && typeof window.MediaSource === 'function';
+
+      if (hasMediaSource) {
+        try {
+          const ms = new window.MediaSource();
+          mediaSourceRef.current = ms;
+          if (videoRef.current) videoRef.current.src = URL.createObjectURL(ms);
+
+          ms.addEventListener('sourceopen', () => {
+            try {
+              let mime = 'video/webm;codecs=vp8,opus';
+              if (!window.MediaSource.isTypeSupported(mime)) mime = 'video/webm';
+              if (!window.MediaSource.isTypeSupported(mime)) mime = 'video/mp4';
+              const sb = ms.addSourceBuffer(mime);
+              sourceBufferRef.current = sb;
+              sb.mode = 'sequence';
+              sb.addEventListener('updateend', () => { processQueue(); jumpToLiveEdgeIfNeeded(); });
+            } catch (e) { console.error('MediaSource buffer init:', e); }
+          });
+        } catch (e) {
+          console.error('MediaSource creation error:', e);
+        }
       }
     }
 
+    // Connect WebSocket for Viewer counts and Chat
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${wsProtocol}//${window.location.hostname || 'localhost'}:${window.location.port || '5000'}/live/watch`);
+    const ws = new WebSocket(`${wsProtocol}//${host}:${window.location.port || '5000'}/live/watch`);
     wsRef.current = ws;
 
     ws.onmessage = (event) => {
@@ -78,13 +114,17 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
           if (msg.type === 'viewers') setViewerCount(msg.count);
           else if (msg.type === 'chat') setComments(prev => [...prev, { id: 'c-' + Date.now(), user: msg.user, text: msg.text }]);
         } catch (e) {}
-      } else if (event.data instanceof Blob) {
+      } else if (!isObs && event.data instanceof Blob) {
         event.data.arrayBuffer().then(buf => { bufferQueueRef.current.push(buf); processQueue(); });
       }
     };
 
-    return () => { if (wsRef.current) wsRef.current.close(); };
-  }, []);
+    return () => {
+      if (wsRef.current) wsRef.current.close();
+      if (flvPlayer) { flvPlayer.destroy(); }
+      if (hlsPlayer) { hlsPlayer.destroy(); }
+    };
+  }, [liveStreamInfo]);
 
   useEffect(() => {
     if (chatEndRef.current) chatEndRef.current.scrollIntoView({ behavior: 'smooth' });

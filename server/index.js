@@ -315,7 +315,18 @@ const nmsConfig = {
   },
   http: {
     port: 8000,
+    mediaroot: path.join(__dirname, 'data', 'media'),
     allow_origin: '*'
+  },
+  trans: {
+    ffmpeg: '/usr/bin/ffmpeg',
+    tasks: [
+      {
+        app: 'live',
+        hls: true,
+        hlsFlags: '[hls_time=2:m3u8_hold_counters=5]'
+      }
+    ]
   }
 };
 

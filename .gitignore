@@ -5,9 +5,10 @@ node_modules
 # Production build output
 dist
 
-# Local data & uploads (exclude video files from git repo)
+# Local data & uploads (keep sample videos)
 server/data/uploads/*
 !server/data/uploads/.gitkeep
+!server/data/uploads/videos/*.mp4
 
 # Environment variables
 .env

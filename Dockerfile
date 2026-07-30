@@ -17,11 +17,9 @@ RUN npm ci --only=production
 COPY --from=builder /app/dist ./dist
 COPY server ./server
 
-# Expose HTTP (5000), HTTPS (5443), RTMP (1935), and HTTP-FLV Live Stream (8000)
+# Expose HTTP (5000), HTTPS (5443)
 EXPOSE 5000
 EXPOSE 5443
-EXPOSE 1935
-EXPOSE 8000
 
 ENV PORT=5000
 ENV HTTPS_PORT=5443

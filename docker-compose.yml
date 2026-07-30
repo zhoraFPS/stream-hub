@@ -8,8 +8,6 @@ services:
     ports:
       - "5000:5000"
       - "5443:5443"
-      - "1935:1935"
-      - "8000:8000"
     environment:
       - PORT=5000
       - HTTPS_PORT=5443
@@ -18,3 +16,17 @@ services:
       - ./server/data:/app/server/data
     devices:
       - /dev/dri:/dev/dri
+
+  mediamtx:
+    image: bluenviron/mediamtx:latest
+    container_name: mediamtx
+    restart: unless-stopped
+    ports:
+      - "1935:1935"   # RTMP
+      - "8889:8889"   # WebRTC (WHEP/WHIP)
+      - "8888:8888"   # HLS (Fallback)
+      - "8189:8189"   # WebRTC UDP
+    environment:
+      - MTX_WEBRTCADDITIONALHOSTS=192.168.178.69
+      - MTX_RUNONPUBLISH=curl -X POST http://stream-hub:5000/api/internal/obs-start
+      - MTX_RUNONPUBLISHDONE=curl -X POST http://stream-hub:5000/api/internal/obs-stop

@@ -1,7 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Radio, Users, Volume2, VolumeX, ArrowLeft, MessageSquare, Send, Play } from 'lucide-react';
-import flvjs from 'flv.js';
-import Hls from 'hls.js';
 
 export default function LivePlayer({ liveStreamInfo, onBack }) {
   const videoRef = useRef(null);
@@ -40,41 +38,59 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
   useEffect(() => {
     const isObs = liveStreamInfo?.id === 'live-obs';
     const host = window.location.hostname || 'localhost';
-    let flvPlayer = null;
-    let hlsPlayer = null;
+    let pc = null;
 
     if (isObs) {
-      // OBS Stream Playback (HTTP-FLV & HLS)
-      const flvUrl = `http://${host}:8000/live/streamhub_live.flv`;
-      const hlsUrl = `http://${host}:8000/live/streamhub_live/index.m3u8`;
+      // OBS Stream Playback via Native WebRTC (WHEP from MediaMTX)
+      const whepUrl = `http://${host}:8889/live/whep`; // Assuming stream is just "live", or fallback
 
-      if (flvjs.isSupported()) {
-        flvPlayer = flvjs.createPlayer({
-          type: 'flv',
-          url: flvUrl,
-          isLive: true,
-          hasAudio: true,
-          hasVideo: true,
-        });
-        if (videoRef.current) {
-          flvPlayer.attachMediaElement(videoRef.current);
-          flvPlayer.load();
-          flvPlayer.play().then(() => setIsPlaying(true)).catch(() => {});
-        }
-      } else if (Hls.isSupported()) {
-        hlsPlayer = new Hls({ enableWorker: true });
-        hlsPlayer.loadSource(hlsUrl);
-        if (videoRef.current) {
-          hlsPlayer.attachMedia(videoRef.current);
-          hlsPlayer.on(Hls.Events.MANIFEST_PARSED, () => {
+      const setupWebRTC = async () => {
+        pc = new RTCPeerConnection();
+        
+        pc.addTransceiver('video', { direction: 'recvonly' });
+        pc.addTransceiver('audio', { direction: 'recvonly' });
+
+        pc.ontrack = (event) => {
+          if (videoRef.current && videoRef.current.srcObject !== event.streams[0]) {
+            videoRef.current.srcObject = event.streams[0];
             videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+          }
+        };
+
+        try {
+          const offer = await pc.createOffer();
+          await pc.setLocalDescription(offer);
+
+          // Try 'live' first, if fails try 'live/streamhub_live' (in case user used stream key)
+          let response = await fetch(whepUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/sdp' },
+            body: offer.sdp
           });
+
+          if (!response.ok) {
+            response = await fetch(`http://${host}:8889/live/streamhub_live/whep`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/sdp' },
+              body: offer.sdp
+            });
+          }
+
+          if (response.ok) {
+            const answerSdp = await response.text();
+            await pc.setRemoteDescription(new RTCSessionDescription({
+              type: 'answer',
+              sdp: answerSdp
+            }));
+          } else {
+            console.error('WebRTC WHEP error:', response.statusText);
+          }
+        } catch (err) {
+          console.error('WebRTC Setup Error:', err);
         }
-      } else if (videoRef.current?.canPlayType('application/vnd.apple.mpegurl')) {
-        // Native HLS for Safari on iPhone
-        videoRef.current.src = hlsUrl;
-        videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
-      }
+      };
+
+      setupWebRTC();
     } else {
       // Handy Camera Stream (WebSocket Buffer Queue)
       const hasMediaSource = typeof window !== 'undefined' && 'MediaSource' in window && typeof window.MediaSource === 'function';
@@ -121,8 +137,10 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
 
     return () => {
       if (wsRef.current) wsRef.current.close();
-      if (flvPlayer) { flvPlayer.destroy(); }
-      if (hlsPlayer) { hlsPlayer.destroy(); }
+      if (pc) {
+        pc.close();
+        if (videoRef.current) videoRef.current.srcObject = null;
+      }
     };
   }, [liveStreamInfo]);
 

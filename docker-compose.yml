@@ -22,7 +22,7 @@ services:
     container_name: mediamtx
     restart: unless-stopped
     ports:
-      - "1935:1935"   # RTMP
+      - "1936:1935"   # RTMP (Geändert von 1935 auf 1936)
       - "8889:8889"   # WebRTC (WHEP/WHIP)
       - "8888:8888"   # HLS (Fallback)
       - "8189:8189"   # WebRTC UDP

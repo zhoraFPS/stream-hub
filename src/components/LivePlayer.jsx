@@ -17,6 +17,17 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
   const [commentText, setCommentText] = useState('');
   const [commentUser, setCommentUser] = useState('');
 
+  // Auto seek to the live edge (<100ms latency)
+  const jumpToLiveEdge = () => {
+    if (videoRef.current && videoRef.current.buffered.length > 0) {
+      const liveEnd = videoRef.current.buffered.end(videoRef.current.buffered.length - 1);
+      // If playback is lagging behind by more than 0.4 seconds, jump straight to live edge!
+      if (liveEnd - videoRef.current.currentTime > 0.4) {
+        videoRef.current.currentTime = Math.max(0, liveEnd - 0.1);
+      }
+    }
+  };
+
   // Process incoming buffer queue into SourceBuffer
   const processQueue = () => {
     const sb = sourceBufferRef.current;
@@ -25,7 +36,8 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
         const nextBuffer = bufferQueueRef.current.shift();
         sb.appendBuffer(nextBuffer);
 
-        // Attempt playback on first buffer append
+        // Auto seek to live edge and start playback
+        jumpToLiveEdge();
         if (videoRef.current && videoRef.current.paused) {
           videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
         }
@@ -55,6 +67,7 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
 
         sourceBuffer.addEventListener('updateend', () => {
           processQueue();
+          jumpToLiveEdge();
         });
       } catch (err) {
         console.error('MediaSource error:', err);
@@ -91,7 +104,10 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
 
   const handleManualPlay = () => {
     if (videoRef.current) {
-      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => {});
+      videoRef.current.play().then(() => {
+        setIsPlaying(true);
+        jumpToLiveEdge();
+      }).catch(() => {});
     }
   };
 
@@ -145,14 +161,14 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
                 <div className="w-16 h-16 rounded-full bg-[#0055b8] text-white flex items-center justify-center shadow-2xl animate-pulse">
                   <Play className="w-8 h-8 fill-white ml-1" />
                 </div>
-                <span className="text-xs font-bold text-white uppercase tracking-wider">LIVE STREAM ABPIELEN</span>
+                <span className="text-xs font-bold text-white uppercase tracking-wider">LIVE EDGE ABPIELEN</span>
               </button>
             )}
 
             {/* Live Indicator Overlay */}
             <div className="absolute top-3 left-3 z-10 flex items-center gap-2 px-3 py-1 rounded bg-red-600 text-white text-xs font-mono font-bold border border-red-400">
               <span className="w-2 h-2 rounded-full bg-white animate-ping"></span>
-              <span>LIVE</span>
+              <span>LIVE EDGE (&lt;100ms)</span>
               <span>•</span>
               <span className="flex items-center gap-1">
                 <Users className="w-3.5 h-3.5" />

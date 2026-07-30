@@ -190,11 +190,11 @@ if (fs.existsSync(DIST_DIR)) {
   app.use(express.static(DIST_DIR));
 }
 
-// REAL-TIME WEBSOCKET LIVE STREAMING ENGINE (WITH HEAVY BUFFER CATCHUP & QUEUE)
+// REAL-TIME WEBSOCKET LIVE STREAMING ENGINE
 const wssHttp = new WebSocketServer({ server: httpServer });
 let activeLiveStream = null;
 let liveViewers = new Set();
-let liveChunks = []; // Keeps all video chunks for live stream catchup
+let liveChunks = [];
 
 function setupWebSocket(wssInstance) {
   wssInstance.on('connection', (ws, req) => {
@@ -211,7 +211,6 @@ function setupWebSocket(wssInstance) {
           fileWriteStream.write(message);
           liveChunks.push(message);
 
-          // Broadcast to all active viewers immediately
           liveViewers.forEach((viewer) => {
             if (viewer.readyState === 1) {
               viewer.send(message);
@@ -246,13 +245,20 @@ function setupWebSocket(wssInstance) {
     } else if (url.includes('/live/watch')) {
       liveViewers.add(ws);
       
-      // Instantly send accumulated stream chunks to late-joining viewer so video decodes without freezing!
+      // Fast Live Edge Catchup: Send Header Chunk (liveChunks[0]) + last 10 chunks for instant sync!
       if (activeLiveStream && liveChunks.length > 0) {
-        liveChunks.forEach((chunk) => {
-          if (ws.readyState === 1) {
-            ws.send(chunk);
-          }
-        });
+        if (ws.readyState === 1) {
+          // Always send header chunk first for decoder init
+          ws.send(liveChunks[0]);
+          
+          // Send last 10 chunks to jump straight to live edge
+          const recentChunks = liveChunks.slice(-10);
+          recentChunks.forEach((chunk, i) => {
+            if (i > 0 && ws.readyState === 1) {
+              ws.send(chunk);
+            }
+          });
+        }
       }
       
       broadcastViewerCount();

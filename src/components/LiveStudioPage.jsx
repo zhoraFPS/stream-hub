@@ -288,6 +288,24 @@ export default function LiveStudioPage({ onBack, onStreamStarted, onStreamEnded 
               </div>
             </div>
           ))}
+
+          {/* OBS Stream Live Monitor & Preview */}
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: '1px solid rgba(255,255,255,0.08)' }}>
+            <div style={{ display: 'flex', itemsAlign: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+              <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.05em' }}>OBS Live Vorschau</span>
+              <button onClick={() => window.location.hash = 'live'} className="btn-primary" style={{ fontSize: 11, padding: '4px 10px' }}>
+                <Radio style={{ width: 12, height: 12 }} /> Vorschau öffnen
+              </button>
+            </div>
+
+            <div style={{ width: '100%', aspectRatio: '16/9', background: '#000', borderRadius: 8, overflow: 'hidden', border: '1px solid rgba(255,255,255,0.1)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
+              <div style={{ textAlign: 'center', padding: 16 }}>
+                <Radio style={{ width: 32, height: 32, color: '#0055b8', margin: '0 auto 8px' }} />
+                <p style={{ fontSize: 12, fontWeight: 700, color: '#fff' }}>OBS Stream Signal Empfangen</p>
+                <p style={{ fontSize: 11, color: '#94a3b8', marginTop: 4 }}>Sobald du in OBS "Stream starten" klickst, ist der Stream live auf der Landing Page.</p>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>

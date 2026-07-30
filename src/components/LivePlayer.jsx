@@ -36,21 +36,36 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
   };
 
   useEffect(() => {
-    const ms = new MediaSource();
-    mediaSourceRef.current = ms;
-    if (videoRef.current) videoRef.current.src = URL.createObjectURL(ms);
+    // Safely check for MediaSource support (iOS Safari doesn't support MediaSource for WebM MSE)
+    const hasMediaSource = typeof window !== 'undefined' && 'MediaSource' in window && typeof window.MediaSource === 'function';
 
-    ms.addEventListener('sourceopen', () => {
+    if (hasMediaSource) {
       try {
-        let mime = 'video/webm;codecs=vp8,opus';
-        if (!MediaSource.isTypeSupported(mime)) mime = 'video/webm';
-        if (!MediaSource.isTypeSupported(mime)) mime = 'video/mp4';
-        const sb = ms.addSourceBuffer(mime);
-        sourceBufferRef.current = sb;
-        sb.mode = 'sequence';
-        sb.addEventListener('updateend', () => { processQueue(); jumpToLiveEdgeIfNeeded(); });
-      } catch (e) { console.error('MediaSource:', e); }
-    });
+        const ms = new window.MediaSource();
+        mediaSourceRef.current = ms;
+        if (videoRef.current) videoRef.current.src = URL.createObjectURL(ms);
+
+        ms.addEventListener('sourceopen', () => {
+          try {
+            let mime = 'video/webm;codecs=vp8,opus';
+            if (!window.MediaSource.isTypeSupported(mime)) mime = 'video/webm';
+            if (!window.MediaSource.isTypeSupported(mime)) mime = 'video/mp4';
+            const sb = ms.addSourceBuffer(mime);
+            sourceBufferRef.current = sb;
+            sb.mode = 'sequence';
+            sb.addEventListener('updateend', () => { processQueue(); jumpToLiveEdgeIfNeeded(); });
+          } catch (e) { console.error('MediaSource buffer init:', e); }
+        });
+      } catch (e) {
+        console.error('MediaSource creation error:', e);
+      }
+    } else {
+      console.warn('MediaSource API is not supported on this browser (e.g. iOS Safari).');
+      if (videoRef.current) {
+        // Fallback for HLS or direct HTTP live stream
+        videoRef.current.src = `/api/live/stream.m3u8`;
+      }
+    }
 
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const ws = new WebSocket(`${wsProtocol}//${window.location.hostname || 'localhost'}:${window.location.port || '5000'}/live/watch`);

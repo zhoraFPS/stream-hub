@@ -139,7 +139,7 @@ export function regenerateStreamKey(userId) {
 
 export function getAllLiveChannels() {
   return getDb().prepare(`
-    SELECT id, username, display_name, avatar_url, live_title, is_live
+    SELECT id, username, display_name, avatar_url, live_title, is_live, stream_key
     FROM users WHERE is_live = 1
   `).all();
 }

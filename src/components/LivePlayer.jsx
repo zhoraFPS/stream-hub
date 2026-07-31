@@ -262,9 +262,15 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
   const [commentText, setCommentText] = useState('');
   const [commentUser, setCommentUser] = useState('');
 
-  const isObs = liveStreamInfo?.id === 'live-obs';
+  const streamKey = liveStreamInfo?.stream_key || liveStreamInfo?.streamKey || 'streamhub_live';
+  const isObs = liveStreamInfo?.isLive !== false && (
+    liveStreamInfo?.id === 'live-obs' ||
+    (typeof liveStreamInfo?.id === 'string' && liveStreamInfo.id.startsWith('live-obs')) ||
+    !!liveStreamInfo?.stream_key ||
+    !!liveStreamInfo?.streamKey
+  );
   const host = window.location.hostname || 'localhost';
-  const hlsUrl = `http://${host}:8888/live/streamhub_live/index.m3u8`;
+  const hlsUrl = liveStreamInfo?.hlsUrl || `http://${host}:8888/live/${streamKey}/index.m3u8`;
 
   const jumpToLiveEdgeIfNeeded = () => {
     if (videoRef.current?.buffered?.length > 0) {

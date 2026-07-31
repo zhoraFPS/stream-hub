@@ -204,7 +204,12 @@ app.get('/api/channels/:username', (req, res) => {
   if (!user) return res.status(404).json({ error: 'Kanal nicht gefunden' });
 
   const videos = getVideosByUser(user.id);
-  const { password_hash, stream_key, ...publicUser } = user;
+  const { password_hash, ...publicUser } = user;
+  if (user.is_live === 1) {
+    publicUser.stream_key = user.stream_key;
+  } else {
+    delete publicUser.stream_key;
+  }
   res.json({ channel: publicUser, videos });
 });
 

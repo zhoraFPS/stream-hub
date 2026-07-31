@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Radio, Play, Users, RefreshCw, Copy, Check, Edit2, Save, X } from 'lucide-react';
+import { ArrowLeft, Radio, Play } from 'lucide-react';
+import LivePlayer from './LivePlayer';
 
 export default function ChannelPage({ username, currentUser, authToken, onBack, onSelectVideo }) {
   const [channel, setChannel] = useState(null);
@@ -44,14 +45,37 @@ export default function ChannelPage({ username, currentUser, authToken, onBack, 
     </div>
   );
 
+  const liveStreamInfo = channel?.is_live === 1 ? {
+    id: `live-obs-${channel.id}`,
+    userId: channel.id,
+    username: channel.username,
+    stream_key: channel.stream_key,
+    title: channel.live_title || `${channel.display_name || channel.username}'s Stream`,
+    uploader: channel.display_name || channel.username,
+    isLive: true,
+  } : null;
+
   return (
-    <div style={{ maxWidth: 1200, margin: '0 auto', padding: '0 16px 48px' }}>
-      {/* Back */}
+    <div style={{ maxWidth: 1400, margin: '0 auto', padding: '0 16px 48px' }}>
+      {/* Back button */}
       <div style={{ padding: '12px 0' }}>
         <button onClick={onBack} className="btn-secondary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <ArrowLeft style={{ width: 14, height: 14 }} /> Zurück
+          <ArrowLeft style={{ width: 14, height: 14 }} /> Zurück zur Übersicht
         </button>
       </div>
+
+      {/* Embedded Live Player if channel is live */}
+      {liveStreamInfo && (
+        <div style={{ marginBottom: 32 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 8px #ef4444', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
+              🔴 JETZT LIVE auf @{channel.username}
+            </h2>
+          </div>
+          <LivePlayer liveStreamInfo={liveStreamInfo} onBack={null} />
+        </div>
+      )}
 
       {/* Channel Header */}
       <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid var(--border)', overflow: 'hidden', marginBottom: 32 }}>
@@ -88,30 +112,9 @@ export default function ChannelPage({ username, currentUser, authToken, onBack, 
         </div>
       </div>
 
-      {/* Live stream preview if online */}
-      {channel?.is_live === 1 && (
-        <div style={{ marginBottom: 32 }}>
-          <h2 style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc', marginBottom: 12, display: 'flex', alignItems: 'center', gap: 8 }}>
-            <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 8px #ef4444', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
-            Jetzt live
-          </h2>
-          <div
-            onClick={() => onSelectVideo?.({ id: `live-obs-${channel.id}`, isLive: true, userId: channel.id, username: channel.username })}
-            style={{ cursor: 'pointer', position: 'relative', borderRadius: 12, overflow: 'hidden', aspectRatio: '16/9', maxWidth: 480, background: '#000', border: '2px solid #dc2626' }}>
-            <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.4)' }}>
-              <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(0,85,184,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Play style={{ width: 24, height: 24, fill: '#fff', color: '#fff', marginLeft: 3 }} />
-              </div>
-            </div>
-            <div style={{ position: 'absolute', top: 10, left: 10, background: '#dc2626', padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 800, color: '#fff' }}>LIVE</div>
-            <div style={{ position: 'absolute', bottom: 10, left: 10, right: 10, color: '#fff', fontSize: 13, fontWeight: 600 }}>{channel.live_title || 'Live Stream'}</div>
-          </div>
-        </div>
-      )}
-
       {/* Videos Grid */}
       <h2 style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc', marginBottom: 16 }}>
-        Videos <span style={{ fontSize: 13, color: '#475569', fontWeight: 400 }}>({videos.length})</span>
+        Videos & VODs <span style={{ fontSize: 13, color: '#475569', fontWeight: 400 }}>({videos.length})</span>
       </h2>
 
       {videos.length === 0 ? (

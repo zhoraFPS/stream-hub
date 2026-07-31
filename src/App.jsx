@@ -112,23 +112,68 @@ export default function App() {
     return () => clearInterval(interval);
   }, [fetchVideos, fetchLiveChannels]);
 
-  // ── Navigation ──────────────────────────────────────────────────────────────
-  const goHome = () => { setCurrentPage('home'); setActiveVideo(null); setActiveLive(null); };
+  // ── Navigation & Hash Routing ────────────────────────────────────────────────
+  const goHome = () => {
+    setCurrentPage('home');
+    setActiveVideo(null);
+    setActiveLive(null);
+    if (window.location.hash) window.location.hash = '';
+  };
 
   const openVideo = (video) => {
     if (video.isLive) {
-      setActiveLive(video);
-      setCurrentPage('live');
+      if (video.username) openChannel(video.username);
+      else {
+        setActiveLive(video);
+        setCurrentPage('live');
+        window.location.hash = '#live';
+      }
     } else {
       setActiveVideo(video);
       setCurrentPage('watch');
+      if (video.id) window.location.hash = `#watch=${video.id}`;
     }
   };
 
   const openChannel = (username) => {
+    if (!username) return;
     setChannelUsername(username);
     setCurrentPage('channel');
+    window.location.hash = `#channel=${username}`;
   };
+
+  // Listen to browser location hash changes
+  useEffect(() => {
+    const handleHash = async () => {
+      const hash = window.location.hash;
+      if (hash.startsWith('#channel=')) {
+        const uname = hash.replace('#channel=', '');
+        if (uname) { setChannelUsername(uname); setCurrentPage('channel'); }
+      } else if (hash === '#studio') {
+        setCurrentPage('studio');
+      } else if (hash === '#settings') {
+        setCurrentPage('settings');
+      } else if (hash === '#auth') {
+        setCurrentPage('auth');
+      } else if (hash === '#live') {
+        setCurrentPage('live');
+      } else if (hash.startsWith('#watch=')) {
+        const vidId = hash.replace('#watch=', '');
+        if (vidId) {
+          setCurrentPage('watch');
+          try {
+            const res = await fetch(`/api/videos/${vidId}`);
+            if (res.ok) setActiveVideo(await res.json());
+          } catch (e) {}
+        }
+      } else if (!hash) {
+        setCurrentPage('home');
+      }
+    };
+    handleHash();
+    window.addEventListener('hashchange', handleHash);
+    return () => window.removeEventListener('hashchange', handleHash);
+  }, []);
 
   const handleDeleteVideo = async (videoId) => {
     if (!authToken) return;
@@ -286,10 +331,7 @@ export default function App() {
                   {/* Per-user channels */}
                   {liveChannels.map(ch => (
                     <LiveChannelCard key={ch.id} channel={ch}
-                      onClick={() => {
-                        setActiveLive({ id: `live-obs-${ch.id}`, userId: ch.id, username: ch.username, title: ch.live_title || `${ch.display_name}'s Stream`, uploader: ch.display_name, isLive: true });
-                        setCurrentPage('live');
-                      }}
+                      onClick={() => openChannel(ch.username)}
                     />
                   ))}
                 </div>

@@ -1,5 +1,4 @@
 import React from 'react';
-import { Trash2, Eye, ThumbsUp } from 'lucide-react';
 
 function formatDuration(seconds) {
   if (!seconds || isNaN(seconds)) return '00:00';
@@ -12,11 +11,11 @@ function formatDuration(seconds) {
 function formatRelativeTime(dateString) {
   if (!dateString) return '';
   const diff = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
-  if (diff < 3600) return 'Gerade eben';
+  if (diff < 3600) return 'GERADE EBEN';
   const hours = Math.floor(diff / 3600);
-  if (hours < 24) return `vor ${hours} Std.`;
+  if (hours < 24) return `VOR ${hours} STD.`;
   const days = Math.floor(hours / 24);
-  return `vor ${days} Tagen`;
+  return `VOR ${days} TAGEN`;
 }
 
 export default function VideoCard({ video, onSelectVideo, onDeleteVideo }) {
@@ -40,7 +39,7 @@ export default function VideoCard({ video, onSelectVideo, onDeleteVideo }) {
               onDeleteVideo(video.id);
             }}
           >
-            <Trash2 size={14} />
+            LÖSCHEN
           </button>
         )}
       </div>
@@ -48,21 +47,16 @@ export default function VideoCard({ video, onSelectVideo, onDeleteVideo }) {
       <div className="video-card-info">
         <h3 className="video-card-title">{video.title}</h3>
 
-        <p className="video-card-meta">
-          <span>{video.uploader || 'Unbekannt'}</span>
-          <span>•</span>
+        <div className="video-card-meta">
+          <span>{video.uploader || 'UNBEKANNT'}</span>
+          <span style={{ margin: '0 4px', color: '#64748b' }}>•</span>
           <span>{formatRelativeTime(video.createdAt || video.created_at)}</span>
-        </p>
+        </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, fontSize: 11, color: '#64748b', fontWeight: 600 }}>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <Eye size={12} />
-            {video.views ?? 0}
-          </span>
-          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
-            <ThumbsUp size={12} />
-            {video.likes ?? 0}
-          </span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, fontSize: 11, color: '#64748b', fontWeight: 800 }}>
+          <span>{video.views ?? 0} AUFRUFE</span>
+          <span>•</span>
+          <span>{video.likes ?? 0} LIKES</span>
         </div>
       </div>
     </div>

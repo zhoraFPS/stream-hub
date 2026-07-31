@@ -1,5 +1,4 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Radio } from 'lucide-react';
 import LivePlayer from './LivePlayer';
 
 export default function ChannelPage({ username, currentUser, authToken, onBack, onSelectVideo }) {
@@ -40,7 +39,7 @@ export default function ChannelPage({ username, currentUser, authToken, onBack, 
 
   if (error) return (
     <div style={{ textAlign: 'center', padding: 48 }}>
-      <p style={{ color: '#ef4444', fontSize: 13, fontWeight: 700, textTransform: 'uppercase' }}>{error}</p>
+      <p style={{ color: '#ef4444', fontSize: 13, fontWeight: 900, textTransform: 'uppercase' }}>{error}</p>
       <button onClick={onBack} className="btn-secondary" style={{ marginTop: 16 }}>ZURÜCK</button>
     </div>
   );
@@ -56,23 +55,22 @@ export default function ChannelPage({ username, currentUser, authToken, onBack, 
   } : null;
 
   return (
-    <div style={{ maxWidth: 1400, margin: '0 auto', padding: '0 16px 48px' }}>
+    <div style={{ maxWidth: 1600, margin: '0 auto', padding: '0 20px 48px' }}>
       {/* Back button */}
-      <div style={{ padding: '12px 0' }}>
-        <button onClick={onBack} className="btn-secondary" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
-          <ArrowLeft style={{ width: 14, height: 14 }} /> ZURÜCK ZUR ÜBERSICHT
+      <div style={{ padding: '16px 0' }}>
+        <button onClick={onBack} className="btn-secondary" style={{ fontSize: 11 }}>
+          ← ZURÜCK ZUR ÜBERSICHT
         </button>
       </div>
 
       {/* Embedded Live Player if channel is live */}
       {liveStreamInfo && (
         <div style={{ marginBottom: 32 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
             <div className="live-badge">
-              <span style={{ width: 6, height: 6, background: '#fff', animation: 'pulse 1.5s infinite' }} />
               LIVE
             </div>
-            <h2 style={{ fontSize: 15, fontWeight: 800, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+            <h2 style={{ fontSize: 15, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
               JETZT LIVE AUF @{channel.username}
             </h2>
           </div>
@@ -81,13 +79,13 @@ export default function ChannelPage({ username, currentUser, authToken, onBack, 
       )}
 
       {/* Channel Header */}
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-strong)', overflow: 'hidden', marginBottom: 32 }}>
+      <div style={{ background: 'var(--bg-card)', overflow: 'hidden', marginBottom: 32 }}>
         {/* Banner */}
-        <div style={{ height: 120, background: 'linear-gradient(135deg, #030d2e 0%, #0055b8 100%)', borderBottom: '1px solid var(--border)' }} />
+        <div style={{ height: 140, background: '#0055b8' }} />
 
-        <div style={{ padding: '0 24px 24px', position: 'relative' }}>
+        <div style={{ padding: '0 32px 32px', position: 'relative' }}>
           {/* Avatar */}
-          <div style={{ width: 80, height: 80, background: '#0055b8', border: '3px solid var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: -40, marginBottom: 12, fontSize: 32, fontWeight: 900, color: '#fff', overflow: 'hidden' }}>
+          <div style={{ width: 88, height: 88, background: '#020714', border: '4px solid var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'center', marginTop: -44, marginBottom: 16, fontSize: 36, fontWeight: 900, color: '#ffffff', overflow: 'hidden' }}>
             {channel?.avatar_url ? (
               <img src={channel.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
@@ -97,34 +95,32 @@ export default function ChannelPage({ username, currentUser, authToken, onBack, 
 
           <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, flexWrap: 'wrap' }}>
             <div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                <h1 style={{ fontSize: 22, fontWeight: 900, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+                <h1 style={{ fontSize: 24, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
                   {channel?.display_name || channel?.username}
                 </h1>
                 {channel?.is_live === 1 && (
                   <div className="live-badge">
-                    <span style={{ width: 6, height: 6, background: '#fff', animation: 'pulse 1.5s infinite' }} />
                     LIVE
                   </div>
                 )}
               </div>
-              <p style={{ fontSize: 12, fontWeight: 700, color: '#64748b', marginTop: 2 }}>@{channel?.username}</p>
-              {channel?.bio && <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 8, maxWidth: 600, lineHeight: 1.5 }}>{channel.bio}</p>}
+              <p style={{ fontSize: 12, fontWeight: 800, color: '#64748b', marginTop: 4 }}>@{channel?.username}</p>
+              {channel?.bio && <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 10, maxWidth: 640, lineHeight: 1.5 }}>{channel.bio}</p>}
             </div>
           </div>
         </div>
       </div>
 
       {/* Videos Grid */}
-      <h2 style={{ fontSize: 15, fontWeight: 900, color: '#f8fafc', marginBottom: 16, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
-        VIDEOS & VODS <span style={{ fontSize: 13, color: '#64748b', fontWeight: 600 }}>({videos.length})</span>
+      <h2 style={{ fontSize: 15, fontWeight: 900, color: '#ffffff', marginBottom: 20, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
+        VIDEOS & VODS <span style={{ fontSize: 12, color: '#64748b', fontWeight: 800 }}>({videos.length})</span>
       </h2>
 
       {videos.length === 0 ? (
         <div className="empty-state">
-          <Radio style={{ width: 40, height: 40, margin: '0 auto 12px', opacity: 0.3 }} />
-          <p style={{ fontSize: 13, fontWeight: 700, textTransform: 'uppercase' }}>Noch keine Videos hochgeladen</p>
-          {isOwner && <p style={{ fontSize: 12, marginTop: 6, color: '#64748b' }}>Lade dein erstes Video über den Upload-Button hoch!</p>}
+          <p style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>NOCH KEINE VIDEOS HOCHGELADEN</p>
+          {isOwner && <p style={{ fontSize: 12, marginTop: 8, color: '#64748b' }}>LADE DEIN ERSTES VIDEO OBEN ÜBER DER SEITE HOCH.</p>}
         </div>
       ) : (
         <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
@@ -144,9 +140,9 @@ export default function ChannelPage({ username, currentUser, authToken, onBack, 
                 <p className="video-card-title">
                   {video.title}
                 </p>
-                <div style={{ display: 'flex', gap: 10, marginTop: 6, fontSize: 11, fontWeight: 600, color: '#64748b' }}>
-                  <span>{video.views?.toLocaleString()} Aufrufe</span>
-                  <span>·</span>
+                <div style={{ display: 'flex', gap: 10, marginTop: 8, fontSize: 11, fontWeight: 800, color: '#64748b' }}>
+                  <span>{video.views?.toLocaleString()} AUFRUFE</span>
+                  <span>•</span>
                   <span>{formatDate(video.created_at)}</span>
                 </div>
               </div>

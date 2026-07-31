@@ -162,7 +162,8 @@ export function createVideo({ id, userId, title, description, filename, thumbnai
 
 export function getVideoById(id) {
   return getDb().prepare(`
-    SELECT v.*, u.username, u.display_name, u.avatar_url
+    SELECT v.*, u.username, u.display_name, u.avatar_url,
+           COALESCE(u.display_name, u.username, 'VfL Redaktion') AS uploader
     FROM videos v LEFT JOIN users u ON v.user_id = u.id
     WHERE v.id = ?
   `).get(id);
@@ -170,7 +171,8 @@ export function getVideoById(id) {
 
 export function getVideosByUser(userId) {
   return getDb().prepare(`
-    SELECT v.*, u.username, u.display_name
+    SELECT v.*, u.username, u.display_name, u.avatar_url,
+           COALESCE(u.display_name, u.username, 'VfL Redaktion') AS uploader
     FROM videos v LEFT JOIN users u ON v.user_id = u.id
     WHERE v.user_id = ? ORDER BY v.created_at DESC
   `).all(userId);
@@ -178,7 +180,8 @@ export function getVideosByUser(userId) {
 
 export function getAllVideos({ category, search, limit = 50, offset = 0 } = {}) {
   let sql = `
-    SELECT v.*, u.username, u.display_name, u.avatar_url
+    SELECT v.*, u.username, u.display_name, u.avatar_url,
+           COALESCE(u.display_name, u.username, 'VfL Redaktion') AS uploader
     FROM videos v LEFT JOIN users u ON v.user_id = u.id
     WHERE 1=1
   `;

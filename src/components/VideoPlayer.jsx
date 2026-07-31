@@ -1,31 +1,38 @@
 import React, { useRef, useState, useEffect } from 'react';
-import {
-  Play, Pause, Volume2, VolumeX, Maximize, RotateCcw,
-  RotateCw, ThumbsUp, Share2, MessageSquare, Send,
-  ArrowLeft, CheckCircle2, Tv, Download
-} from 'lucide-react';
-import { formatDuration, formatViews, formatTimeAgo } from '../utils/formatters';
 
-export default function VideoPlayer({ video, allVideos, onSelectVideo, onBack, onLike, onAddComment, systemInfo }) {
+function formatDuration(seconds) {
+  if (!seconds || isNaN(seconds)) return '00:00';
+  const s = Math.floor(seconds);
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
+}
+
+function formatRelativeTime(dateString) {
+  if (!dateString) return '';
+  const diff = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
+  if (diff < 3600) return 'GERADE EBEN';
+  const hours = Math.floor(diff / 3600);
+  if (hours < 24) return `VOR ${hours} STD.`;
+  const days = Math.floor(hours / 24);
+  return `VOR ${days} TAGEN`;
+}
+
+export default function VideoPlayer({ video, allVideos, onSelectVideo, onBack, onLike, onAddComment, systemInfo, onOpenChannel }) {
   const videoRef = useRef(null);
   const containerRef = useRef(null);
 
   const [isPlaying, setIsPlaying] = useState(true);
-  const [currentTime, setCurrentTime] = useState(0);
-  const [duration, setDuration] = useState(video.duration || 0);
-  const [volume, setVolume] = useState(1);
-  const [isMuted, setIsMuted] = useState(false);
-  const [playbackSpeed, setPlaybackSpeed] = useState(1);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [showControls, setShowControls] = useState(true);
-
   const [commentUser, setCommentUser] = useState('');
   const [commentText, setCommentText] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
+  const [comments, setComments] = useState(video.comments || []);
+  const [likeCount, setLikeCount] = useState(video.likes || 0);
 
-  const controlsTimeoutRef = useRef(null);
+  const uploaderName = video.display_name || video.username || video.uploader || 'VfL Redaktion';
+  const uploaderUsername = video.username || 'vflbochum';
+  const avatarUrl = video.avatar_url;
 
-  // Streaming URL
   const streamUrl = video.videoUrl && video.videoUrl.startsWith('http')
     ? video.videoUrl
     : `/api/videos/${video.id}/stream`;
@@ -37,355 +44,223 @@ export default function VideoPlayer({ video, allVideos, onSelectVideo, onBack, o
     }
   }, [video.id]);
 
-  // Keyboard listeners
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (['INPUT', 'TEXTAREA'].includes(document.activeElement.tagName)) return;
-
-      switch (e.code) {
-        case 'Space':
-        case 'KeyK':
-          e.preventDefault();
-          togglePlay();
-          break;
-        case 'ArrowLeft':
-          e.preventDefault();
-          skipTime(-5);
-          break;
-        case 'ArrowRight':
-          e.preventDefault();
-          skipTime(5);
-          break;
-        case 'KeyF':
-          e.preventDefault();
-          toggleFullscreen();
-          break;
-        case 'KeyM':
-          e.preventDefault();
-          toggleMute();
-          break;
-        default:
-          break;
-      }
-    };
-
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isPlaying, isMuted, volume]);
-
-  const togglePlay = () => {
-    if (videoRef.current) {
-      if (isPlaying) {
-        videoRef.current.pause();
-        setIsPlaying(false);
-      } else {
-        videoRef.current.play();
-        setIsPlaying(true);
-      }
-    }
-  };
-
-  const handleTimeUpdate = () => {
-    if (videoRef.current) {
-      setCurrentTime(videoRef.current.currentTime);
-      if (videoRef.current.duration) {
-        setDuration(videoRef.current.duration);
-      }
-    }
-  };
-
-  const handleSeek = (e) => {
-    const time = parseFloat(e.target.value);
-    setCurrentTime(time);
-    if (videoRef.current) {
-      videoRef.current.currentTime = time;
-    }
-  };
-
-  const skipTime = (seconds) => {
-    if (videoRef.current) {
-      videoRef.current.currentTime = Math.min(
-        Math.max(videoRef.current.currentTime + seconds, 0),
-        duration
-      );
-    }
-  };
-
-  const handleVolumeChange = (e) => {
-    const val = parseFloat(e.target.value);
-    setVolume(val);
-    if (videoRef.current) {
-      videoRef.current.volume = val;
-      setIsMuted(val === 0);
-    }
-  };
-
-  const toggleMute = () => {
-    if (videoRef.current) {
-      if (isMuted) {
-        videoRef.current.volume = volume || 1;
-        setIsMuted(false);
-      } else {
-        videoRef.current.volume = 0;
-        setIsMuted(true);
-      }
-    }
-  };
-
-  const handleSpeedChange = (speed) => {
-    setPlaybackSpeed(speed);
-    if (videoRef.current) {
-      videoRef.current.playbackRate = speed;
-    }
-  };
-
-  const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) {
-      containerRef.current.requestFullscreen().then(() => setIsFullscreen(true));
-    } else {
-      document.exitFullscreen().then(() => setIsFullscreen(false));
-    }
-  };
-
-  const handleMouseMove = () => {
-    setShowControls(true);
-    if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
-    controlsTimeoutRef.current = setTimeout(() => {
-      if (isPlaying) setShowControls(false);
-    }, 3500);
-  };
-
   const handleCopyLink = () => {
-    const hostUrl = systemInfo ? `http://${systemInfo.localIp}:${systemInfo.port}` : window.location.origin;
-    const shareUrl = `${hostUrl}/#watch=${video.id}`;
+    const shareUrl = `${window.location.origin}/#watch=${video.id}`;
     navigator.clipboard.writeText(shareUrl);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
   };
 
+  const handleLike = () => {
+    setLikeCount(c => c + 1);
+    if (onLike) onLike(video.id);
+  };
+
   const handleCommentSubmit = (e) => {
     e.preventDefault();
     if (!commentText.trim()) return;
-    onAddComment(video.id, commentUser || 'Zuschauer', commentText.trim());
+    const newComment = {
+      id: 'c-' + Date.now(),
+      user: commentUser.trim() || 'ZUSCHAUER',
+      text: commentText.trim(),
+      date: new Date().toISOString()
+    };
+    setComments(prev => [newComment, ...prev]);
+    if (onAddComment) onAddComment(video.id, newComment.user, newComment.text);
     setCommentText('');
   };
 
   const recommendedVideos = (allVideos || []).filter(v => v.id !== video.id);
 
   return (
-    <div className="w-full max-w-[1440px] mx-auto px-4 py-4 space-y-6">
+    <div style={{ maxWidth: 1600, margin: '0 auto', padding: '16px 20px 48px' }}>
       
-      {/* Top Header & Navigation Back */}
-      <div className="flex items-center justify-between">
-        <button
-          onClick={onBack}
-          className="btn-secondary text-xs flex items-center gap-2"
-        >
-          <ArrowLeft className="w-4 h-4 text-cyan-400" />
-          <span>Zurück zur VOD-Übersicht</span>
+      {/* Back button */}
+      <div style={{ paddingBottom: 16 }}>
+        <button onClick={onBack} className="btn-secondary" style={{ fontSize: 11 }}>
+          ← ZURÜCK ZUR VOD-ÜBERSICHT
         </button>
-
-        <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '4px 10px', borderRadius: 6, background: 'rgba(0,85,184,0.1)', border: '1px solid rgba(0,85,184,0.3)', color: '#60a5fa', fontSize: 11, fontWeight: 600 }}>
-          VOD Aufzeichnung
-        </div>
       </div>
 
-      {/* Main Grid: Cinema Player + Recommended Sidebar */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Main 2-Column Grid */}
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, alignItems: 'start' }} className="live-layout-grid">
         
-        {/* Left Column: Player & Metadata */}
-        <div className="lg:col-span-2 space-y-5">
+        {/* Left Column: Player & Video Info */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           
-          {/* Cinema Video Player Canvas */}
-          <div
-            ref={containerRef}
-            onMouseMove={handleMouseMove}
-            className="relative bg-black rounded-xl overflow-hidden aspect-video shadow-2xl border border-white/10 group"
-          >
+          {/* Cinema Player Container */}
+          <div ref={containerRef} style={{ position: 'relative', background: '#000', overflow: 'hidden', aspectRatio: '16/9' }}>
             <video
               ref={videoRef}
               src={streamUrl}
-              onTimeUpdate={handleTimeUpdate}
-              onLoadedMetadata={handleTimeUpdate}
-              onEnded={() => setIsPlaying(false)}
-              onClick={togglePlay}
               controls
-              className="w-full h-full object-contain"
+              autoPlay
               playsInline
+              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+              onPlay={() => setIsPlaying(true)}
+              onPause={() => setIsPlaying(false)}
             />
           </div>
 
-          {/* Video Title & Uploader Info */}
-          <div className="glass-panel p-5 space-y-4">
+          {/* Title */}
+          <h1 style={{ fontSize: 20, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.04em', lineHeight: 1.3 }}>
+            {video.title}
+          </h1>
+
+          {/* Channel Card & Actions Row */}
+          <div style={{ padding: '16px 20px', background: 'var(--bg-card)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 16 }}>
             
-            <h1 className="text-xl font-bold text-white tracking-tight">{video.title}</h1>
-
-            <div className="flex flex-wrap items-center justify-between gap-4 border-b border-white/10 pb-4">
-              
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-lg bg-blue-600/20 border border-blue-500/40 flex items-center justify-center font-bold text-sm text-blue-400">
-                  {video.uploader ? video.uploader.substring(0, 2).toUpperCase() : 'SH'}
+            {/* Channel Info */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 14 }}>
+              <div
+                onClick={() => onOpenChannel && onOpenChannel(uploaderUsername)}
+                style={{ width: 44, height: 44, background: '#0055b8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 900, color: '#ffffff', cursor: 'pointer', overflow: 'hidden', flexShrink: 0 }}>
+                {avatarUrl ? (
+                  <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                ) : (
+                  uploaderName[0].toUpperCase()
+                )}
+              </div>
+              <div>
+                <div
+                  onClick={() => onOpenChannel && onOpenChannel(uploaderUsername)}
+                  style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', cursor: 'pointer' }}>
+                  {uploaderName}
                 </div>
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <span className="font-bold text-sm text-white">{video.uploader || 'StreamHub'}</span>
-                  </div>
-                  <p className="text-xs text-gray-400">VOD Mediathek</p>
+                <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', marginTop: 2 }}>
+                  @{uploaderUsername} · VFL REDAKTION
                 </div>
               </div>
-
-              {/* Action Buttons */}
-              <div className="flex items-center gap-2">
+              {onOpenChannel && (
                 <button
-                  onClick={() => onLike(video.id)}
-                  className="btn-secondary text-xs flex items-center gap-2"
-                >
-                  <ThumbsUp className="w-3.5 h-3.5 text-blue-400" />
-                  <span>{video.likes || 0} Gefällt mir</span>
+                  onClick={() => onOpenChannel(uploaderUsername)}
+                  className="btn-primary"
+                  style={{ fontSize: 10, padding: '6px 12px', marginLeft: 8 }}>
+                  KANAL BESUCHEN
                 </button>
-
-                <button
-                  onClick={handleCopyLink}
-                  className="btn-secondary text-xs flex items-center gap-2"
-                >
-                  {copiedLink ? (
-                    <>
-                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
-                      <span className="text-emerald-400">Link kopiert!</span>
-                    </>
-                  ) : (
-                    <>
-                      <Share2 className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Teilen</span>
-                    </>
-                  )}
-                </button>
-
-                <a
-                  href={streamUrl}
-                  download
-                  className="btn-secondary text-xs flex items-center gap-2"
-                  title="VOD Herunterladen"
-                >
-                  <Download className="w-3.5 h-3.5 text-gray-300" />
-                </a>
-              </div>
-
-            </div>
-
-            {/* Description Box */}
-            <div className="p-3.5 rounded-lg bg-black/40 border border-white/5 space-y-2">
-              <div className="flex items-center gap-3 text-xs text-gray-400 font-mono">
-                <span>{formatViews(video.views)}</span>
-                <span>•</span>
-                <span>{formatTimeAgo(video.createdAt)}</span>
-                <span>•</span>
-                <span className="text-cyan-400 font-semibold">{video.category}</span>
-              </div>
-              <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-line">
-                {video.description || 'Keine Beschreibung vorhanden.'}
-              </p>
-
-              {video.tags && video.tags.length > 0 && (
-                <div className="flex flex-wrap gap-1.5 pt-1">
-                  {video.tags.map((tag, idx) => (
-                    <span key={idx} className="badge-tag">
-                      #{tag}
-                    </span>
-                  ))}
-                </div>
               )}
             </div>
 
-            {/* Comments Section */}
-            <div className="pt-2 space-y-4">
-              <div className="flex items-center gap-2 font-bold text-sm text-white">
-                <MessageSquare className="w-4 h-4 text-blue-400" />
-                <span>Kommentare ({(video.comments && video.comments.length) || 0})</span>
-              </div>
+            {/* Actions */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <button onClick={handleLike} className="btn-secondary" style={{ fontSize: 11 }}>
+                GEFÄLLT MIR ({likeCount})
+              </button>
+              <button onClick={handleCopyLink} className="btn-secondary" style={{ fontSize: 11 }}>
+                {copiedLink ? 'LINK KOPIERT' : 'TEILEN'}
+              </button>
+              <a href={streamUrl} download className="btn-secondary" style={{ fontSize: 11 }}>
+                HERUNTERLADEN
+              </a>
+            </div>
+          </div>
 
-              {/* Comment Input */}
-              <form onSubmit={handleCommentSubmit} className="space-y-2">
-                <div className="flex gap-2">
-                  <input
-                    type="text"
-                    placeholder="Dein Name..."
-                    value={commentUser}
-                    onChange={(e) => setCommentUser(e.target.value)}
-                    className="w-1/3 bg-black/40 border border-white/10 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-                  />
-                  <input
-                    type="text"
-                    placeholder="Kommentar verfassen..."
-                    value={commentText}
-                    onChange={(e) => setCommentText(e.target.value)}
-                    className="flex-1 bg-black/40 border border-white/10 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-                  />
-                  <button type="submit" className="btn-primary text-xs">
-                    <Send className="w-3.5 h-3.5" />
-                  </button>
-                </div>
-              </form>
+          {/* Description Box */}
+          <div style={{ padding: '16px 20px', background: 'var(--bg-card)', fontSize: 12, color: '#94a3b8', lineHeight: 1.6 }}>
+            <div style={{ display: 'flex', gap: 12, fontSize: 11, fontWeight: 800, color: '#64748b', textTransform: 'uppercase', marginBottom: 10 }}>
+              <span>{video.views || 0} AUFRUFE</span>
+              <span>•</span>
+              <span>{formatRelativeTime(video.createdAt || video.created_at)}</span>
+              <span>•</span>
+              <span style={{ color: '#0055b8' }}>{video.category || 'General'}</span>
+            </div>
+            <p style={{ color: '#ffffff', whiteSpace: 'pre-line', fontSize: 13 }}>
+              {video.description || 'Keine Beschreibung vorhanden.'}
+            </p>
+          </div>
 
-              {/* Comments List */}
-              <div className="space-y-2">
-                {video.comments && video.comments.length > 0 ? (
-                  video.comments.map((c) => (
-                    <div key={c.id} className="p-2.5 rounded-md bg-white/[0.02] border border-white/5 space-y-1">
-                      <div className="flex items-center justify-between text-xs">
-                        <span className="font-semibold text-gray-200">{c.user}</span>
-                        <span className="text-gray-500 font-mono">{formatTimeAgo(c.date)}</span>
-                      </div>
-                      <p className="text-xs text-gray-300">{c.text}</p>
-                    </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-gray-500 italic py-1">Noch keine Kommentare vorhanden.</p>
-                )}
-              </div>
+          {/* Comments Section */}
+          <div style={{ padding: '20px', background: 'var(--bg-card)', display: 'flex', flexDirection: 'column', gap: 16 }}>
+            <div style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+              KOMMENTARE ({comments.length})
             </div>
 
+            {/* Comment Form */}
+            <form onSubmit={handleCommentSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <input
+                type="text"
+                placeholder="DEIN NAME (OPTIONAL)"
+                value={commentUser}
+                onChange={e => setCommentUser(e.target.value)}
+                className="input-search"
+                style={{ width: '100%', fontSize: 11, textTransform: 'uppercase' }}
+              />
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  type="text"
+                  placeholder="KOMMENTAR SCHREIBEN…"
+                  value={commentText}
+                  onChange={e => setCommentText(e.target.value)}
+                  className="input-search"
+                  style={{ flex: 1, fontSize: 12 }}
+                />
+                <button type="submit" className="btn-primary" style={{ fontSize: 11, padding: '8px 16px', flexShrink: 0 }}>
+                  ABSENDEN
+                </button>
+              </div>
+            </form>
+
+            {/* Comments List */}
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, marginTop: 8 }}>
+              {comments.length > 0 ? (
+                comments.map(c => (
+                  <div key={c.id} style={{ padding: '10px 14px', background: 'rgba(255,255,255,0.04)', fontSize: 12, lineHeight: 1.4 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
+                      <span style={{ fontWeight: 900, color: '#0055b8', textTransform: 'uppercase' }}>{c.user}</span>
+                      <span style={{ fontSize: 10, color: '#64748b', fontWeight: 700 }}>{formatRelativeTime(c.date)}</span>
+                    </div>
+                    <p style={{ color: '#ffffff' }}>{c.text}</p>
+                  </div>
+                ))
+              ) : (
+                <p style={{ fontSize: 11, color: '#64748b', fontStyle: 'italic', textTransform: 'uppercase' }}>Noch keine Kommentare vorhanden.</p>
+              )}
+            </div>
           </div>
 
         </div>
 
-        {/* Right Column: Recommended VODs List */}
-        <div className="space-y-3">
-          <h3 className="font-bold text-sm text-white flex items-center gap-2">
-            <Tv className="w-4 h-4" style={{ color: 'var(--accent)' }} />
-            <span>Weitere VODs</span>
-          </h3>
+        {/* Right Column: Recommended VODs */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={{ fontSize: 13, fontWeight: 900, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            WEITERE VODS
+          </div>
 
-          <div className="space-y-2.5">
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
             {recommendedVideos.length > 0 ? (
-              recommendedVideos.map((rec) => (
+              recommendedVideos.map(rec => (
                 <div
                   key={rec.id}
                   onClick={() => onSelectVideo(rec)}
-                  className="video-card p-2 flex flex-row gap-3 hover:bg-white/5 transition-all cursor-pointer border border-white/5"
+                  className="video-card"
+                  style={{ display: 'flex', gap: 10, padding: 8 }}
                 >
-                  <div className="w-32 aspect-video bg-black rounded overflow-hidden relative shrink-0">
-                    <img src={rec.thumbnailUrl} alt={rec.title} className="w-full h-full object-cover" />
+                  <div style={{ width: 120, aspectRatio: '16/9', background: '#000', position: 'relative', flexShrink: 0 }}>
+                    <img src={rec.thumbnailUrl || rec.thumbnail_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                     <div className="badge-duration">{formatDuration(rec.duration)}</div>
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-semibold text-xs text-white line-clamp-2 leading-snug">{rec.title}</h4>
-                    <p className="text-[11px] text-gray-400 mt-1 truncate">{rec.uploader || 'VOD'}</p>
-                    <p className="text-[10px] text-gray-500 font-mono mt-0.5">{formatViews(rec.views)}</p>
+                  <div style={{ flex: 1, minWidth: 0, padding: '2px 0' }}>
+                    <h4 style={{ fontSize: 12, fontWeight: 800, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', display: '-webkit-box', WebkitLineClamp: 2, WebkitBoxOrient: 'vertical', lineHeight: 1.3, textTransform: 'uppercase' }}>
+                      {rec.title}
+                    </h4>
+                    <p style={{ fontSize: 10, color: '#64748b', marginTop: 4, fontWeight: 700, textTransform: 'uppercase' }}>
+                      {rec.display_name || rec.username || rec.uploader || 'VfL Redaktion'}
+                    </p>
+                    <p style={{ fontSize: 10, color: '#475569', marginTop: 2, fontWeight: 700 }}>
+                      {rec.views || 0} AUFRUFE
+                    </p>
                   </div>
                 </div>
               ))
             ) : (
-              <div className="p-4 glass-panel text-center text-xs text-gray-400">
-                Keine weiteren VODs in der Mediathek.
+              <div className="empty-state" style={{ padding: 24 }}>
+                <p style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase' }}>Keine weiteren VODs.</p>
               </div>
             )}
           </div>
         </div>
 
       </div>
-
     </div>
   );
 }

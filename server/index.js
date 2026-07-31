@@ -247,24 +247,34 @@ app.get('/api/videos/:id/stream', (req, res) => {
   if (ext === '.webm') mimeType = 'video/webm';
   if (ext === '.mkv') mimeType = 'video/x-matroska';
 
+  const CHUNK_SIZE = 2 * 1024 * 1024; // 2MB progressive chunks
+
   if (range) {
-    const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(startStr, 10) || 0;
-    let end = endStr?.trim() ? parseInt(endStr, 10) : fileSize - 1;
-    if (isNaN(end) || end >= fileSize) end = fileSize - 1;
+    const parts = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(parts[0], 10) || 0;
+    let end = parts[1] ? parseInt(parts[1], 10) : start + CHUNK_SIZE - 1;
+
     if (start >= fileSize) return res.status(416).send('Range Not Satisfiable');
+    if (end >= fileSize) end = fileSize - 1;
+
+    const chunkSize = end - start + 1;
 
     res.writeHead(206, {
       'Content-Range': `bytes ${start}-${end}/${fileSize}`,
       'Accept-Ranges': 'bytes',
-      'Content-Length': end - start + 1,
+      'Content-Length': chunkSize,
       'Content-Type': mimeType,
       'Cache-Control': 'no-cache',
       'Access-Control-Allow-Origin': '*',
     });
     fs.createReadStream(videoPath, { start, end }).pipe(res);
   } else {
-    res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': mimeType, 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*' });
+    res.writeHead(200, {
+      'Content-Length': fileSize,
+      'Content-Type': mimeType,
+      'Accept-Ranges': 'bytes',
+      'Access-Control-Allow-Origin': '*'
+    });
     fs.createReadStream(videoPath).pipe(res);
   }
 });

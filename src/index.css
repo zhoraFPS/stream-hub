@@ -995,3 +995,43 @@ select {
   border-color: var(--accent);
   box-shadow: 0 0 24px var(--accent-glow);
 }
+
+/* ──────────────────────────────────────────────
+   Live Player Layout (Twitch-style)
+   ────────────────────────────────────────────── */
+
+/* Spinner animation */
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+/* Mobile: stack video above chat */
+.live-layout-grid {
+  grid-template-columns: 1fr !important;
+}
+
+.live-chat-panel {
+  max-height: 380px !important;
+  height: 380px !important;
+}
+
+/* Desktop: side-by-side (Twitch layout) */
+@media (min-width: 900px) {
+  .live-layout-grid {
+    grid-template-columns: 1fr 340px !important;
+  }
+
+  .live-chat-panel {
+    max-height: 640px !important;
+    height: calc(9/16 * (100vw - 400px)) !important;
+  }
+}
+
+@media (min-width: 1200px) {
+  .live-chat-panel {
+    height: calc(9/16 * (100vw - 420px)) !important;
+    min-height: 480px;
+    max-height: 680px !important;
+  }
+}
+

@@ -1,14 +1,24 @@
 #!/bin/sh
 
-# $MTX_PATH contains the path being published (e.g., live/<STREAM_KEY>)
-# Extract the stream key (last part of the path)
+echo "[on_publish.sh] MTX_PATH is '$MTX_PATH'"
 STREAM_KEY=$(basename "$MTX_PATH")
+echo "[on_publish.sh] Extracted STREAM_KEY is '$STREAM_KEY'"
 
-# Send "start" webhook to the Node.js backend with streamKey in query param + post data
-wget -qO- --post-data="streamKey=$STREAM_KEY" "http://stream-hub:5000/api/internal/obs-start?streamKey=$STREAM_KEY"
+if command -v curl >/dev/null 2>&1; then
+  curl -s -X POST -H "Content-Type: application/json" -d "{\"streamKey\":\"$STREAM_KEY\", \"path\":\"$MTX_PATH\"}" "http://stream-hub:5000/api/internal/obs-start"
+else
+  wget -qO- --header="Content-Type: application/json" --post-data="{\"streamKey\":\"$STREAM_KEY\", \"path\":\"$MTX_PATH\"}" "http://stream-hub:5000/api/internal/obs-start"
+fi
 
-# When MediaMTX kills this process (publisher disconnects), send "stop" webhook
-trap 'wget -qO- --post-data="streamKey=$STREAM_KEY" "http://stream-hub:5000/api/internal/obs-stop?streamKey=$STREAM_KEY"; exit 0' INT TERM
+trap '
+  echo "[on_publish.sh] Stopping stream for $STREAM_KEY"
+  if command -v curl >/dev/null 2>&1; then
+    curl -s -X POST -H "Content-Type: application/json" -d "{\"streamKey\":\"$STREAM_KEY\", \"path\":\"$MTX_PATH\"}" "http://stream-hub:5000/api/internal/obs-stop"
+  else
+    wget -qO- --header="Content-Type: application/json" --post-data="{\"streamKey\":\"$STREAM_KEY\", \"path\":\"$MTX_PATH\"}" "http://stream-hub:5000/api/internal/obs-stop"
+  fi
+  exit 0
+' INT TERM
 
-# Block indefinitely so MediaMTX keeps the RTMP connection alive
+# Block indefinitely so MediaMTX keeps the RTMP connection alive and can trigger the trap
 sleep 86400

@@ -21,3 +21,9 @@ npm-debug.log*
 # System files
 .DS_Store
 Thumbs.db
+
+# Database and Certificates
+server/data/*.db
+server/data/*.db-shm
+server/data/*.db-wal
+server/certs/

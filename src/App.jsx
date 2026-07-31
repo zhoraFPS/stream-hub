@@ -468,7 +468,11 @@ function FeaturedLiveHero({ channel, onOpenChannel }) {
       <LivePlayer liveStreamInfo={liveStreamInfo} onBack={null} />
 
       <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+        <div 
+          onClick={() => onOpenChannel(channel.username)}
+          style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
+          className="hover-opacity"
+        >
           <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg, #0055b8, #0068e0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#fff', overflow: 'hidden', flexShrink: 0 }}>
             {channel.avatar_url ? (
               <img src={channel.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />

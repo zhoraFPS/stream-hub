@@ -232,7 +232,7 @@ export default function App() {
   if (currentPage === 'channel' && channelUsername) {
     return (
       <ErrorBoundary>
-        <div style={{ background: 'var(--bg-main)', minHeight: '100vh' }}>
+        <div style={{ background: 'var(--bg-main)', minHeight: '100vh', paddingTop: '84px' }}>
           <Navbar
             search={searchQuery} setSearch={setSearchQuery}
             onOpenUpload={() => setIsUploadOpen(true)}
@@ -260,7 +260,7 @@ export default function App() {
   if (currentPage === 'settings' && currentUser) {
     return (
       <ErrorBoundary>
-        <div style={{ background: 'var(--bg-main)', minHeight: '100vh' }}>
+        <div style={{ background: 'var(--bg-main)', minHeight: '100vh', paddingTop: '84px' }}>
           <Navbar
             search={searchQuery} setSearch={setSearchQuery}
             onOpenUpload={() => setIsUploadOpen(true)}
@@ -301,10 +301,10 @@ export default function App() {
           onHome={goHome}
         />
 
-        <div style={{ display: 'flex', maxWidth: 1600, margin: '0 auto' }}>
+        <div style={{ display: 'flex', maxWidth: 1600, margin: '0 auto', paddingTop: '84px' }}>
           <Sidebar selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />
 
-          <main style={{ flex: 1, padding: '24px 20px 48px', minWidth: 0 }}>
+          <main style={{ flex: 1, padding: '16px 20px 48px', minWidth: 0, marginLeft: '248px' }}>
 
             {/* ── LIVE STREAMS SECTION ────────────────────────────────────── */}
             {(liveChannels.length > 0 || activeLive) && (

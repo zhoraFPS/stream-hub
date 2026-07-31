@@ -43,6 +43,7 @@ if (sslCerts && sslCerts.key && sslCerts.cert) {
 
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
+app.use(express.urlencoded({ extended: true, limit: '100mb' }));
 
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
@@ -353,7 +354,7 @@ app.post('/api/internal/stream-auth', (req, res) => {
 // MediaMTX webhook: stream started (via on_publish.sh)
 // The stream key is extracted from the MTX_PATH env var in on_publish.sh
 app.post('/api/internal/obs-start', (req, res) => {
-  const streamKey = req.body?.streamKey || req.query?.streamKey;
+  const streamKey = req.query?.streamKey || req.body?.streamKey || req.query?.user || req.body?.user || req.query?.path?.split('/')?.pop();
 
   if (streamKey) {
     const user = getUserByStreamKey(streamKey);
@@ -361,11 +362,11 @@ app.post('/api/internal/obs-start', (req, res) => {
       const title = req.body?.title || `${user.display_name || user.username}'s Live Stream`;
       updateUserLiveStatus(user.id, true, title);
       startLiveSession(user.id, title);
-      // Update global activeLiveStream for legacy phone stream compatibility
       activeLiveStream = {
         id: `live-obs-${user.id}`,
         userId: user.id,
         username: user.username,
+        stream_key: user.stream_key,
         title,
         uploader: user.display_name || user.username,
         isLive: true,
@@ -373,28 +374,17 @@ app.post('/api/internal/obs-start', (req, res) => {
         views: 1,
         thumbnailUrl: user.avatar_url || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
       };
-      console.log(`[Webhook] Stream started: ${user.username}`);
+      console.log(`[Webhook] Stream started for user: ${user.username}`);
       return res.sendStatus(200);
     }
   }
 
-  // Fallback: no stream key in webhook (old behaviour)
-  if (!activeLiveStream || activeLiveStream.id === 'live-obs') {
-    activeLiveStream = {
-      id: 'live-obs',
-      title: '🔴 OBS Live Stream',
-      uploader: 'OBS Studio',
-      isLive: true,
-      startedAt: new Date().toISOString(),
-      views: 1,
-      thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
-    };
-  }
+  console.warn('[Webhook] obs-start called without valid user stream key:', { query: req.query, body: req.body });
   res.sendStatus(200);
 });
 
 app.post('/api/internal/obs-stop', (req, res) => {
-  const streamKey = req.body?.streamKey || req.query?.streamKey;
+  const streamKey = req.query?.streamKey || req.body?.streamKey || req.query?.user || req.body?.user || req.query?.path?.split('/')?.pop();
 
   if (streamKey) {
     const user = getUserByStreamKey(streamKey);
@@ -405,12 +395,12 @@ app.post('/api/internal/obs-stop', (req, res) => {
         activeLiveStream = null;
         liveViewers.clear();
       }
-      console.log(`[Webhook] Stream ended: ${user.username}`);
+      console.log(`[Webhook] Stream ended for user: ${user.username}`);
       return res.sendStatus(200);
     }
   }
 
-  if (activeLiveStream?.id === 'live-obs') {
+  if (activeLiveStream) {
     activeLiveStream = null;
     liveViewers.clear();
   }

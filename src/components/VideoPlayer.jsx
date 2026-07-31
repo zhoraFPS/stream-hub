@@ -1,4 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
+import Plyr from 'plyr';
 
 function formatDuration(seconds) {
   if (!seconds || isNaN(seconds)) return '00:00';
@@ -20,9 +21,8 @@ function formatRelativeTime(dateString) {
 
 export default function VideoPlayer({ video, allVideos, onSelectVideo, onBack, onLike, onAddComment, systemInfo, onOpenChannel }) {
   const videoRef = useRef(null);
-  const containerRef = useRef(null);
+  const playerRef = useRef(null);
 
-  const [isPlaying, setIsPlaying] = useState(true);
   const [commentUser, setCommentUser] = useState('');
   const [commentText, setCommentText] = useState('');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -37,12 +37,38 @@ export default function VideoPlayer({ video, allVideos, onSelectVideo, onBack, o
     ? video.videoUrl
     : `/api/videos/${video.id}/stream`;
 
+  // Initialize High-End Plyr Player
   useEffect(() => {
-    if (videoRef.current) {
-      videoRef.current.load();
-      videoRef.current.play().then(() => setIsPlaying(true)).catch(() => setIsPlaying(false));
-    }
-  }, [video.id]);
+    if (!videoRef.current) return;
+
+    const player = new Plyr(videoRef.current, {
+      autoplay: true,
+      controls: [
+        'play-large',
+        'play',
+        'progress',
+        'current-time',
+        'duration',
+        'mute',
+        'volume',
+        'settings',
+        'pip',
+        'fullscreen',
+      ],
+      settings: ['speed'],
+      speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
+      tooltips: { controls: true, seek: true },
+      keyboard: { focused: true, global: true },
+    });
+
+    playerRef.current = player;
+
+    return () => {
+      if (playerRef.current) {
+        try { playerRef.current.destroy(); } catch {}
+      }
+    };
+  }, [streamUrl]);
 
   const handleCopyLink = () => {
     const shareUrl = `${window.location.origin}/#watch=${video.id}`;
@@ -85,21 +111,12 @@ export default function VideoPlayer({ video, allVideos, onSelectVideo, onBack, o
       {/* Main 2-Column Grid */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 20, alignItems: 'start' }} className="live-layout-grid">
         
-        {/* Left Column: Player & Video Info */}
+        {/* Left Column: High-End Video Player & Metadata */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 16, minWidth: 0 }}>
           
-          {/* Cinema Player Container */}
-          <div ref={containerRef} style={{ position: 'relative', background: '#000', overflow: 'hidden', aspectRatio: '16/9' }}>
-            <video
-              ref={videoRef}
-              src={streamUrl}
-              controls
-              autoPlay
-              playsInline
-              style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
-              onPlay={() => setIsPlaying(true)}
-              onPause={() => setIsPlaying(false)}
-            />
+          {/* High-End Plyr Video Canvas */}
+          <div style={{ background: '#000000', overflow: 'hidden' }}>
+            <video ref={videoRef} src={streamUrl} playsInline controls style={{ width: '100%', height: '100%' }} />
           </div>
 
           {/* Title */}

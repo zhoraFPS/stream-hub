@@ -1,4 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&display=swap');
+@import 'plyr/dist/plyr.css';
 
 /* ──────────────────────────────────────────────
    VfL Bochum Modern Unified Canvas Design System
@@ -6,6 +7,12 @@
    ────────────────────────────────────────────── */
 
 :root {
+  --plyr-color-main: #0055b8;
+  --plyr-video-background: #000000;
+  --plyr-control-radius: 0px;
+  --plyr-badge-border-radius: 0px;
+  --plyr-menu-radius: 0px;
+  --plyr-font-family: 'Inter', sans-serif;
   --font-main: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
 

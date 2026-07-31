@@ -11,7 +11,7 @@ import QRCodeModal from './components/QRCodeModal';
 import AuthPage from './components/AuthPage';
 import ChannelPage from './components/ChannelPage';
 import SettingsPage from './components/SettingsPage';
-import { PlaySquare, Radio, RefreshCw, AlertCircle, Users, Upload, Play, LogIn, Settings, Tv } from 'lucide-react';
+import { Trophy, Radio, RefreshCw, AlertCircle, Play, LogIn, Tv } from 'lucide-react';
 
 export default function App() {
   // ── Page State ──────────────────────────────────────────────────────────────
@@ -87,7 +87,6 @@ export default function App() {
       const res = await fetch('/api/live');
       if (res.ok) setLiveChannels(await res.json());
     } catch {}
-    // Also check legacy live status
     try {
       const res = await fetch('/api/live/status');
       if (res.ok) {
@@ -142,7 +141,6 @@ export default function App() {
     window.location.hash = `#channel=${username}`;
   };
 
-  // Listen to browser location hash changes
   useEffect(() => {
     const handleHash = async () => {
       const hash = window.location.hash;
@@ -164,7 +162,7 @@ export default function App() {
           try {
             const res = await fetch(`/api/videos/${vidId}`);
             if (res.ok) setActiveVideo(await res.json());
-          } catch (e) {}
+          } catch {}
         }
       } else if (!hash) {
         setCurrentPage('home');
@@ -186,7 +184,6 @@ export default function App() {
     setTimeout(() => fetchVideos(true), 500);
   };
 
-  // ── Live status indicator ───────────────────────────────────────────────────
   const isLiveActive = !!activeLive || liveChannels.length > 0;
 
   // ══════════════════════════════════════════════════════════════════════════════
@@ -310,16 +307,13 @@ export default function App() {
 
           <main style={{ flex: 1, padding: '20px 16px 48px', minWidth: 0 }}>
 
-            {/* ── LIVE STREAMS SECTION (TWITCH FEATURED HERO) ───────────────── */}
+            {/* ── LIVE STREAMS SECTION ────────────────────────────────────── */}
             {(liveChannels.length > 0 || activeLive) && (
               <section style={{ marginBottom: 36 }}>
-                {/* Featured Hero Player */}
                 <FeaturedLiveHero
                   channel={liveChannels[0] || (activeLive?.username ? activeLive : null)}
                   onOpenChannel={openChannel}
                 />
-
-                {/* Additional live channels */}
                 {liveChannels.length > 1 && (
                   <div>
                     <h3 style={{ fontSize: 14, fontWeight: 700, color: '#94a3b8', marginBottom: 12 }}>
@@ -335,12 +329,34 @@ export default function App() {
               </section>
             )}
 
-            {/* ── LOGIN PROMPT (not logged in) ────────────────────────────── */}
+            {/* ── HERO BANNER (kein Live-Stream aktiv) ──────────────────── */}
+            {!isLiveActive && videos.length === 0 && !loading && (
+              <div style={{
+                borderRadius: 16, padding: '32px 28px', marginBottom: 28,
+                background: 'linear-gradient(135deg, rgba(0,85,184,0.18) 0%, rgba(0,0,0,0) 100%)',
+                border: '1px solid rgba(0,85,184,0.25)',
+              }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 10 }}>
+                  <div style={{ width: 44, height: 44, borderRadius: 12, background: 'linear-gradient(135deg, #0055b8, #FFD700)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Trophy style={{ width: 22, height: 22, color: '#fff' }} />
+                  </div>
+                  <div>
+                    <h2 style={{ fontSize: 18, fontWeight: 800, color: '#f8fafc' }}>VfL Bochum TV</h2>
+                    <p style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>Freundschaftsspiele · Interviews · Training · Behind the Scenes</p>
+                  </div>
+                </div>
+                <p style={{ fontSize: 13, color: '#475569', lineHeight: 1.6 }}>
+                  Willkommen auf dem offiziellen Streaming-Portal des VfL Bochum. Hier findet ihr Livestreams von Freundschaftsspielen und Testspielen, exklusive Interviews mit Spielern und Staff sowie Trainingseinblicke und vieles mehr.
+                </p>
+              </div>
+            )}
+
+            {/* ── LOGIN PROMPT (nicht eingeloggt) ────────────────────────── */}
             {!authToken && (
               <div style={{ display: 'flex', alignItems: 'center', gap: 14, padding: '14px 18px', borderRadius: 12, background: 'rgba(0,85,184,0.08)', border: '1px solid rgba(0,85,184,0.2)', marginBottom: 28 }}>
                 <Tv style={{ width: 20, height: 20, color: '#0055b8', flexShrink: 0 }} />
                 <div style={{ flex: 1, fontSize: 13, color: '#94a3b8' }}>
-                  <span style={{ color: '#f8fafc', fontWeight: 600 }}>Eigenen Kanal starten?</span> Melde dich an um live zu gehen und Videos hochzuladen.
+                  <span style={{ color: '#f8fafc', fontWeight: 600 }}>VfL-Redakteur?</span> Melde dich an um Videos hochzuladen und live zu streamen.
                 </div>
                 <button onClick={() => setCurrentPage('auth')} className="btn-primary"
                   style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
@@ -352,7 +368,7 @@ export default function App() {
             {/* ── VIDEO GRID ──────────────────────────────────────────────── */}
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
               <h2 style={{ fontSize: 15, fontWeight: 700, color: '#f8fafc' }}>
-                {selectedCategory === 'All' ? 'Alle Videos' : selectedCategory}
+                {selectedCategory === 'All' ? 'Alle Videos' : selectedCategory.replace('_', ' ')}
                 {!loading && <span style={{ fontSize: 13, color: '#475569', fontWeight: 400, marginLeft: 8 }}>({videos.length})</span>}
               </h2>
               <button onClick={() => fetchVideos()} className="btn-secondary" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -371,10 +387,10 @@ export default function App() {
               </div>
             ) : videos.length === 0 ? (
               <div className="empty-state">
-                <PlaySquare style={{ width: 48, height: 48, margin: '0 auto 14px', opacity: 0.3 }} />
-                <p style={{ fontSize: 16, fontWeight: 600, color: '#475569' }}>Noch keine Videos</p>
+                <Trophy style={{ width: 48, height: 48, margin: '0 auto 14px', opacity: 0.25 }} />
+                <p style={{ fontSize: 16, fontWeight: 600, color: '#475569' }}>Noch keine Videos vorhanden</p>
                 <p style={{ fontSize: 13, color: '#374151', marginTop: 6 }}>
-                  {authToken ? 'Lade dein erstes Video hoch!' : 'Melde dich an und lade Videos hoch.'}
+                  {authToken ? 'Lade das erste VfL-Video hoch!' : 'Schau bald wieder vorbei!'}
                 </p>
               </div>
             ) : (
@@ -396,6 +412,7 @@ export default function App() {
 
         {isUploadOpen && (
           <UploadModal
+            isOpen={isUploadOpen}
             onClose={() => setIsUploadOpen(false)}
             onUploadComplete={handleUploadComplete}
             systemInfo={systemInfo}
@@ -408,13 +425,12 @@ export default function App() {
   );
 }
 
-// ── Live Channel Card component ───────────────────────────────────────────────
+// ── Live Channel Card ─────────────────────────────────────────────────────────
 function LiveChannelCard({ channel, onClick }) {
   return (
     <div onClick={onClick} style={{ cursor: 'pointer', width: 220, borderRadius: 12, background: 'var(--bg-card)', border: '1px solid rgba(220,38,38,0.3)', overflow: 'hidden', transition: 'transform 0.15s, border-color 0.15s' }}
       onMouseEnter={e => { e.currentTarget.style.transform = 'translateY(-3px)'; e.currentTarget.style.borderColor = '#dc2626'; }}
       onMouseLeave={e => { e.currentTarget.style.transform = 'none'; e.currentTarget.style.borderColor = 'rgba(220,38,38,0.3)'; }}>
-      {/* Thumbnail placeholder */}
       <div style={{ aspectRatio: '16/9', background: 'linear-gradient(135deg, #0a1128 0%, #1e3a5f 100%)', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
         <div style={{ width: 40, height: 40, borderRadius: '50%', background: 'rgba(0,85,184,0.8)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
           <Play style={{ width: 18, height: 18, fill: '#fff', color: '#fff', marginLeft: 2 }} />
@@ -429,14 +445,14 @@ function LiveChannelCard({ channel, onClick }) {
           {channel.display_name || channel.username}
         </div>
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {channel.live_title || 'Live Stream'}
+          {channel.live_title || 'VfL Bochum TV Live'}
         </div>
       </div>
     </div>
   );
 }
 
-// ── Twitch Featured Live Hero Banner ─────────────────────────────────────────
+// ── Featured Live Hero ────────────────────────────────────────────────────────
 function FeaturedLiveHero({ channel, onOpenChannel }) {
   if (!channel) return null;
   const liveStreamInfo = {
@@ -444,7 +460,7 @@ function FeaturedLiveHero({ channel, onOpenChannel }) {
     userId: channel.id,
     username: channel.username,
     stream_key: channel.stream_key,
-    title: channel.live_title || channel.title || `${channel.display_name || channel.username}'s Stream`,
+    title: channel.live_title || channel.title || `VfL Bochum TV – Live`,
     uploader: channel.display_name || channel.username,
     isLive: true,
   };
@@ -455,12 +471,12 @@ function FeaturedLiveHero({ channel, onOpenChannel }) {
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 8px #ef4444', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
           <span style={{ fontSize: 13, fontWeight: 800, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-            Featured Live Stream
+            🔴 VfL Bochum TV – Live
           </span>
         </div>
         {channel.username && (
           <button onClick={() => onOpenChannel(channel.username)} className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 4 }}>
-            Kanal @{channel.username} besuchen →
+            Kanal ansehen →
           </button>
         )}
       </div>
@@ -468,24 +484,25 @@ function FeaturedLiveHero({ channel, onOpenChannel }) {
       <LivePlayer liveStreamInfo={liveStreamInfo} onBack={null} />
 
       <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <div 
+        <div
           onClick={() => onOpenChannel(channel.username)}
           style={{ display: 'flex', alignItems: 'center', gap: 12, cursor: 'pointer' }}
           className="hover-opacity"
         >
-          <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg, #0055b8, #0068e0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#fff', overflow: 'hidden', flexShrink: 0 }}>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg, #0055b8, #FFD700)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#fff', overflow: 'hidden', flexShrink: 0 }}>
             {channel.avatar_url ? (
               <img src={channel.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
             ) : (
-              (channel.display_name || channel.username || '?')[0].toUpperCase()
+              (channel.display_name || channel.username || 'V')[0].toUpperCase()
             )}
           </div>
           <div>
             <h3 style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
-              {channel.live_title || channel.title || 'Live Stream'}
+              {channel.live_title || channel.title || 'VfL Bochum TV Live'}
             </h3>
             <p style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
-              {channel.display_name || channel.username} {channel.username && <span style={{ color: '#475569' }}>(@{channel.username})</span>}
+              {channel.display_name || channel.username}
+              {channel.username && <span style={{ color: '#475569' }}> (@{channel.username})</span>}
             </p>
           </div>
         </div>

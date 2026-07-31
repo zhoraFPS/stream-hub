@@ -8,19 +8,29 @@ import http from 'http';
 import https from 'https';
 import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
+import { randomUUID } from 'crypto';
+import bcrypt from 'bcryptjs';
+import jwt from 'jsonwebtoken';
 import { ensureCertsExist } from './generate-cert.js';
+import {
+  getDb, createUser, getUserById, getUserByUsername, getUserByEmail,
+  getUserByStreamKey, updateUserLiveStatus, updateUserProfile,
+  regenerateStreamKey, getAllLiveChannels, safeUser,
+  createVideo, getVideoById, getVideosByUser, getAllVideos,
+  incrementVideoViews, deleteVideo, startLiveSession, endLiveSession
+} from './db.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+const JWT_SECRET = process.env.JWT_SECRET || 'streamhub_jwt_secret_change_in_prod_2024';
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const HTTPS_PORT = process.env.HTTPS_PORT || 5443;
 
-// Create HTTP Server
 const httpServer = http.createServer(app);
 
-// Create HTTPS Server if SSL certs available
 let httpsServer = null;
 const sslCerts = ensureCertsExist();
 if (sslCerts && sslCerts.key && sslCerts.cert) {
@@ -31,350 +41,384 @@ if (sslCerts && sslCerts.key && sslCerts.cert) {
   }
 }
 
-// Enable CORS & JSON parsing
 app.use(cors());
 app.use(express.json({ limit: '100mb' }));
 
-// Global CORS headers for media streaming
 app.use((req, res, next) => {
   res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept, Range, Authorization');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, OPTIONS, PUT, DELETE, PATCH');
+  if (req.method === 'OPTIONS') return res.sendStatus(200);
   next();
 });
 
-// File paths setup
+// ── File Paths ────────────────────────────────────────────────────────────────
 const DATA_DIR = path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const VIDEOS_DIR = path.join(UPLOADS_DIR, 'videos');
 const THUMBNAILS_DIR = path.join(UPLOADS_DIR, 'thumbnails');
-const DB_FILE = path.join(DATA_DIR, 'db.json');
 
-// Ensure directories exist
-[DATA_DIR, UPLOADS_DIR, VIDEOS_DIR, THUMBNAILS_DIR].forEach((dir) => {
-  if (!fs.existsSync(dir)) {
-    fs.mkdirSync(dir, { recursive: true });
-  }
+[DATA_DIR, UPLOADS_DIR, VIDEOS_DIR, THUMBNAILS_DIR].forEach(dir => {
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
-// Configure Multer storage
+// ── Multer ────────────────────────────────────────────────────────────────────
 const storage = multer.diskStorage({
   destination: (req, file, cb) => {
-    if (file.fieldname === 'video') {
-      cb(null, VIDEOS_DIR);
-    } else if (file.fieldname === 'thumbnail') {
-      cb(null, THUMBNAILS_DIR);
-    } else {
-      cb(new Error('Invalid field name'), null);
-    }
+    if (file.fieldname === 'video') cb(null, VIDEOS_DIR);
+    else if (file.fieldname === 'thumbnail') cb(null, THUMBNAILS_DIR);
+    else cb(new Error('Invalid field name'), null);
   },
   filename: (req, file, cb) => {
-    const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1e9);
     const ext = path.extname(file.originalname);
-    cb(null, `${file.fieldname}-${uniqueSuffix}${ext}`);
+    cb(null, `${file.fieldname}-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`);
   },
 });
+const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 * 1024 } });
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 10 * 1024 * 1024 * 1024 }
-});
-
-// JSON DB Helpers
-function readDB() {
-  if (!fs.existsSync(DB_FILE)) {
-    const initialData = { videos: [] };
-    fs.writeFileSync(DB_FILE, JSON.stringify(initialData, null, 2));
-    return initialData;
-  }
+// ── Auth Middleware ───────────────────────────────────────────────────────────
+function requireAuth(req, res, next) {
+  const header = req.headers.authorization;
+  if (!header?.startsWith('Bearer ')) return res.status(401).json({ error: 'Not authenticated' });
   try {
-    const data = fs.readFileSync(DB_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (err) {
-    console.error('Error reading DB, resetting:', err);
-    return { videos: [] };
+    const payload = jwt.verify(header.slice(7), JWT_SECRET);
+    req.userId = payload.userId;
+    next();
+  } catch {
+    res.status(401).json({ error: 'Invalid or expired token' });
   }
 }
 
-function writeDB(data) {
-  fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
+function optionalAuth(req, res, next) {
+  const header = req.headers.authorization;
+  if (header?.startsWith('Bearer ')) {
+    try {
+      const payload = jwt.verify(header.slice(7), JWT_SECRET);
+      req.userId = payload.userId;
+    } catch {}
+  }
+  next();
 }
 
-// Helper to get local network IP address
+// ── Helpers ───────────────────────────────────────────────────────────────────
 function getLocalIp() {
   const interfaces = os.networkInterfaces();
   for (const devName in interfaces) {
     const iface = interfaces[devName];
-    for (let i = 0; i < iface.length; i++) {
-      const alias = iface[i];
-      if (alias.family === 'IPv4' && !alias.internal) {
-        return alias.address;
-      }
+    for (const alias of iface) {
+      if (alias.family === 'IPv4' && !alias.internal) return alias.address;
     }
   }
   return 'localhost';
 }
 
-// Seed Demo VODs
-function seedSampleVideos() {
-  const db = readDB();
-  const sample1Exists = fs.existsSync(path.join(VIDEOS_DIR, 'sample-demo.mp4'));
-  const sample2Exists = fs.existsSync(path.join(VIDEOS_DIR, 'sample-demo2.mp4'));
-
-  const updatedVideos = (db.videos || []).filter(v => !v.isExternal);
-
-  if (updatedVideos.length === 0) {
-    const sampleVideos = [];
-
-    if (sample1Exists) {
-      sampleVideos.push({
-        id: 'demo-local-1',
-        title: 'StreamHub Ultra HD Showcase - Local 4K VOD',
-        description: 'Echter lokaler Stream-Test von der Proxmox Intel NUC SSD. Ultra-Low-Latency Seek und 100% offline verfügbar.',
-        category: 'Gaming',
-        duration: 18,
-        views: 2450,
-        likes: 340,
-        dislikes: 2,
-        uploader: 'Core Node',
-        createdAt: new Date(Date.now() - 3600000 * 2).toISOString(),
-        filename: 'sample-demo.mp4',
-        videoUrl: '/api/videos/demo-local-1/stream',
-        thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
-        isExternal: false,
-        tags: ['4K', 'Proxmox', 'Local VOD'],
-        comments: [
-          { id: 'c1', user: 'Admin', text: 'Läuft mit <10ms Latenz perfekt im NUC-Netzwerk!', date: new Date().toISOString() }
-        ]
-      });
-    }
-
-    if (sample2Exists) {
-      sampleVideos.push({
-        id: 'demo-local-2',
-        title: 'Intel QuickSync Hardware Transcode Benchmark',
-        description: 'VOD Performance Test für Proxmox VE Hardware-Beschleunigung mit der Intel iGPU.',
-        category: 'Tutorials',
-        duration: 11,
-        views: 1280,
-        likes: 195,
-        dislikes: 0,
-        uploader: 'Proxmox NUC',
-        createdAt: new Date(Date.now() - 86400000).toISOString(),
-        filename: 'sample-demo2.mp4',
-        videoUrl: '/api/videos/demo-local-2/stream',
-        thumbnailUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800&q=80',
-        isExternal: false,
-        tags: ['Intel NUC', 'QSV', 'Low Latency'],
-        comments: []
-      });
-    }
-
-    db.videos = sampleVideos;
-    writeDB(db);
-    console.log('Seeded local sample VODs.');
-  }
-}
-
-seedSampleVideos();
-
-// Static routes for uploaded files
+// ── Static Files ──────────────────────────────────────────────────────────────
 app.use('/uploads', express.static(UPLOADS_DIR));
 
-// Static files in production
 const DIST_DIR = path.join(__dirname, '..', 'dist');
-if (fs.existsSync(DIST_DIR)) {
-  app.use(express.static(DIST_DIR));
-}
+if (fs.existsSync(DIST_DIR)) app.use(express.static(DIST_DIR));
 
-// REAL-TIME WEBSOCKET LIVE STREAMING ENGINE & CHAT BROADCASTER
-const wssHttp = new WebSocketServer({ server: httpServer });
-let activeLiveStream = null;
-let publisherSocket = null;
-let liveViewers = new Set();
-let liveChunks = [];
+// ── DB init ───────────────────────────────────────────────────────────────────
+getDb(); // Initialize schema on startup
 
-function broadcastToAll(message) {
-  const jsonStr = typeof message === 'string' ? message : JSON.stringify(message);
-  if (publisherSocket && publisherSocket.readyState === 1) {
-    publisherSocket.send(jsonStr);
+// ═══════════════════════════════════════════════════════════════════════════════
+// AUTH ROUTES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.post('/api/auth/register', async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+    if (!username || !email || !password)
+      return res.status(400).json({ error: 'Username, Email und Passwort sind erforderlich' });
+    if (username.length < 3 || username.length > 24)
+      return res.status(400).json({ error: 'Username muss 3-24 Zeichen lang sein' });
+    if (!/^[a-zA-Z0-9_]+$/.test(username))
+      return res.status(400).json({ error: 'Username darf nur Buchstaben, Zahlen und _ enthalten' });
+    if (password.length < 6)
+      return res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen lang sein' });
+
+    if (getUserByUsername(username)) return res.status(409).json({ error: 'Username bereits vergeben' });
+    if (getUserByEmail(email)) return res.status(409).json({ error: 'Email bereits registriert' });
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    const user = createUser({ username, email, passwordHash });
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+
+    console.log(`[Auth] New user registered: ${username}`);
+    res.status(201).json({ token, user: safeUser(user) });
+  } catch (err) {
+    console.error('[Auth] Register error:', err);
+    res.status(500).json({ error: 'Registrierung fehlgeschlagen' });
   }
-  liveViewers.forEach((v) => {
-    if (v.readyState === 1) v.send(jsonStr);
-  });
-}
+});
 
-function setupWebSocket(wssInstance) {
-  wssInstance.on('connection', (ws, req) => {
-    const url = req.url || '';
+app.post('/api/auth/login', async (req, res) => {
+  try {
+    const { login, password } = req.body; // login = username or email
+    if (!login || !password) return res.status(400).json({ error: 'Login und Passwort erforderlich' });
 
-    if (url.includes('/live/publish')) {
-      console.log('📱 Live Stream Publisher Connected');
-      publisherSocket = ws;
-      let streamFilename = `live-rec-${Date.now()}.webm`;
-      let streamFilePath = path.join(VIDEOS_DIR, streamFilename);
-      let fileWriteStream = fs.createWriteStream(streamFilePath);
+    const user = getUserByUsername(login) || getUserByEmail(login);
+    if (!user) return res.status(401).json({ error: 'Ungültige Zugangsdaten' });
 
-      ws.on('message', (message, isBinary) => {
-        if (isBinary) {
-          fileWriteStream.write(message);
-          liveChunks.push(message);
+    const valid = await bcrypt.compare(password, user.password_hash);
+    if (!valid) return res.status(401).json({ error: 'Ungültige Zugangsdaten' });
 
-          liveViewers.forEach((viewer) => {
-            if (viewer.readyState === 1) {
-              viewer.send(message);
-            }
-          });
-        } else {
-          try {
-            const data = JSON.parse(message.toString());
-            if (data.type === 'start') {
-              activeLiveStream = {
-                id: 'live-now',
-                title: data.title || '🔴 Live-Stream',
-                uploader: data.uploader || 'Handy Live Cam',
-                isLive: true,
-                startedAt: new Date().toISOString(),
-                views: 1,
-                thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
-              };
-              liveChunks = [];
-              console.log(`Live Stream Started: ${activeLiveStream.title}`);
-            } else if (data.type === 'stop') {
-              finishLiveStream(fileWriteStream, streamFilename);
-            } else if (data.type === 'chat') {
-              broadcastToAll(data);
-            }
-          } catch (e) {}
-        }
-      });
+    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    console.log(`[Auth] Login: ${user.username}`);
+    res.json({ token, user: safeUser(user) });
+  } catch (err) {
+    res.status(500).json({ error: 'Login fehlgeschlagen' });
+  }
+});
 
-      ws.on('close', () => {
-        publisherSocket = null;
-        finishLiveStream(fileWriteStream, streamFilename);
-      });
+app.get('/api/auth/me', requireAuth, (req, res) => {
+  const user = getUserById(req.userId);
+  if (!user) return res.status(404).json({ error: 'User not found' });
+  // Include stream_key for own profile
+  const { password_hash, ...rest } = user;
+  res.json(rest);
+});
 
-    } else if (url.includes('/live/watch')) {
-      liveViewers.add(ws);
-      
-      // Send header chunk + last 10 chunks for fast startup
-      if (activeLiveStream && liveChunks.length > 0) {
-        if (ws.readyState === 1) {
-          ws.send(liveChunks[0]);
-          const recentChunks = liveChunks.slice(-10);
-          recentChunks.forEach((chunk, i) => {
-            if (i > 0 && ws.readyState === 1) {
-              ws.send(chunk);
-            }
-          });
-        }
-      }
+app.patch('/api/auth/me', requireAuth, (req, res) => {
+  const { displayName, bio, avatarUrl } = req.body;
+  updateUserProfile(req.userId, { displayName, bio, avatarUrl });
+  res.json({ success: true });
+});
 
-      ws.on('message', (message) => {
-        try {
-          const data = JSON.parse(message.toString());
-          if (data.type === 'chat') {
-            broadcastToAll(data);
-          }
-        } catch (e) {}
-      });
-      
-      broadcastViewerCount();
-      ws.on('close', () => {
-        liveViewers.delete(ws);
-        broadcastViewerCount();
-      });
+app.post('/api/auth/stream-key/regenerate', requireAuth, (req, res) => {
+  const newKey = regenerateStreamKey(req.userId);
+  res.json({ streamKey: newKey });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// CHANNEL ROUTES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/live', (req, res) => {
+  const liveChannels = getAllLiveChannels();
+  res.json(liveChannels);
+});
+
+app.get('/api/channels/:username', (req, res) => {
+  const user = getUserByUsername(req.params.username);
+  if (!user) return res.status(404).json({ error: 'Kanal nicht gefunden' });
+
+  const videos = getVideosByUser(user.id);
+  const { password_hash, stream_key, ...publicUser } = user;
+  res.json({ channel: publicUser, videos });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// VIDEO ROUTES
+// ═══════════════════════════════════════════════════════════════════════════════
+
+app.get('/api/videos', (req, res) => {
+  const { search, category, limit, offset } = req.query;
+  const videos = getAllVideos({ search, category, limit: parseInt(limit) || 50, offset: parseInt(offset) || 0 });
+  res.json(videos);
+});
+
+app.get('/api/videos/:id', optionalAuth, (req, res) => {
+  const video = getVideoById(req.params.id);
+  if (!video) return res.status(404).json({ error: 'Video nicht gefunden' });
+  incrementVideoViews(req.params.id);
+  res.json(video);
+});
+
+app.get('/api/videos/:id/stream', (req, res) => {
+  const video = getVideoById(req.params.id);
+  if (!video) return res.status(404).json({ error: 'Video not found' });
+
+  const videoPath = path.join(VIDEOS_DIR, video.filename);
+  if (!fs.existsSync(videoPath)) return res.status(404).json({ error: 'Video file missing' });
+
+  const stat = fs.statSync(videoPath);
+  const fileSize = stat.size;
+  const range = req.headers.range;
+
+  const ext = path.extname(videoPath).toLowerCase();
+  let mimeType = 'video/mp4';
+  if (ext === '.webm') mimeType = 'video/webm';
+  if (ext === '.mkv') mimeType = 'video/x-matroska';
+
+  if (range) {
+    const [startStr, endStr] = range.replace(/bytes=/, '').split('-');
+    const start = parseInt(startStr, 10) || 0;
+    let end = endStr?.trim() ? parseInt(endStr, 10) : fileSize - 1;
+    if (isNaN(end) || end >= fileSize) end = fileSize - 1;
+    if (start >= fileSize) return res.status(416).send('Range Not Satisfiable');
+
+    res.writeHead(206, {
+      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
+      'Accept-Ranges': 'bytes',
+      'Content-Length': end - start + 1,
+      'Content-Type': mimeType,
+      'Cache-Control': 'no-cache',
+      'Access-Control-Allow-Origin': '*',
+    });
+    fs.createReadStream(videoPath, { start, end }).pipe(res);
+  } else {
+    res.writeHead(200, { 'Content-Length': fileSize, 'Content-Type': mimeType, 'Accept-Ranges': 'bytes', 'Access-Control-Allow-Origin': '*' });
+    fs.createReadStream(videoPath).pipe(res);
+  }
+});
+
+app.post('/api/upload', requireAuth, upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]), (req, res) => {
+  try {
+    const { title, description, category, duration, customThumbnailData } = req.body;
+    const videoFile = req.files?.['video']?.[0];
+    if (!videoFile) return res.status(400).json({ error: 'Video file is required' });
+
+    const videoId = randomUUID();
+    let thumbnailUrl = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80';
+
+    if (req.files?.['thumbnail']) {
+      thumbnailUrl = `/uploads/thumbnails/${req.files['thumbnail'][0].filename}`;
+    } else if (customThumbnailData?.startsWith('data:image')) {
+      const base64Data = customThumbnailData.replace(/^data:image\/\w+;base64,/, '');
+      const thumbFilename = `thumb-${Date.now()}.jpg`;
+      fs.writeFileSync(path.join(THUMBNAILS_DIR, thumbFilename), base64Data, 'base64');
+      thumbnailUrl = `/uploads/thumbnails/${thumbFilename}`;
     }
-  });
-}
 
-setupWebSocket(wssHttp);
+    const video = createVideo({
+      id: videoId,
+      userId: req.userId,
+      title: title || videoFile.originalname,
+      description: description || '',
+      filename: videoFile.filename,
+      thumbnailUrl,
+      category: category || 'General',
+      duration: parseFloat(duration) || 0,
+    });
 
-if (httpsServer) {
-  const wssHttps = new WebSocketServer({ server: httpsServer });
-  setupWebSocket(wssHttps);
-}
+    const user = getUserById(req.userId);
+    console.log(`[Upload] ${user?.username} uploaded: ${video.title}`);
+    res.status(201).json({ ...video, videoUrl: `/api/videos/${videoId}/stream` });
+  } catch (err) {
+    console.error('[Upload] Error:', err);
+    res.status(500).json({ error: 'Upload fehlgeschlagen: ' + err.message });
+  }
+});
 
-function broadcastViewerCount() {
-  const count = liveViewers.size + 1;
-  broadcastToAll({ type: 'viewers', count });
-}
+app.delete('/api/videos/:id', requireAuth, (req, res) => {
+  const video = getVideoById(req.params.id);
+  if (!video) return res.status(404).json({ error: 'Video nicht gefunden' });
+  if (video.user_id !== req.userId) return res.status(403).json({ error: 'Keine Berechtigung' });
 
-// Note: OBS RTMP ingest and WebRTC egress are now handled entirely by the separate MediaMTX Docker container.
+  if (video.filename) {
+    const filePath = path.join(VIDEOS_DIR, video.filename);
+    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+  }
+  deleteVideo(req.params.id, req.userId);
+  res.json({ success: true });
+});
 
-function finishLiveStream(fileWriteStream, filename) {
-  if (!activeLiveStream) return;
-  
-  fileWriteStream.end();
-  const liveTitle = activeLiveStream.title;
-  activeLiveStream = null;
-  liveViewers.clear();
+app.post('/api/videos/:id/like', requireAuth, (req, res) => {
+  const video = getVideoById(req.params.id);
+  if (!video) return res.status(404).json({ error: 'Video nicht gefunden' });
+  getDb().prepare('UPDATE videos SET likes = likes + 1 WHERE id = ?').run(req.params.id);
+  res.json({ success: true });
+});
 
-  const db = readDB();
-  const vodId = 'vod-' + Date.now();
-  const newVod = {
-    id: vodId,
-    title: `🔴 Aufzeichnung: ${liveTitle}`,
-    description: 'Automatische Live-Stream Aufzeichnung.',
-    category: 'Gaming',
-    duration: 30,
-    views: 1,
-    likes: 10,
-    dislikes: 0,
-    uploader: 'Handy Live Stream',
-    createdAt: new Date().toISOString(),
-    filename,
-    videoUrl: `/api/videos/${vodId}/stream`,
-    thumbnailUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800&q=80',
-    isExternal: false,
-    tags: ['Handy Stream', 'Live Aufzeichnung', 'Proxmox'],
-    comments: []
-  };
+// ═══════════════════════════════════════════════════════════════════════════════
+// LIVE / MEDIAMTX INTEGRATION
+// ═══════════════════════════════════════════════════════════════════════════════
 
-  db.videos.unshift(newVod);
-  writeDB(db);
-  console.log(`Live Stream saved to VOD library: ${newVod.title}`);
-}
+// MediaMTX calls this to validate a stream key before accepting RTMP publish
+app.post('/api/internal/stream-auth', (req, res) => {
+  // MediaMTX sends query params: user=streamkey, action=publish, path=live/STREAMKEY
+  const { user, action, path: streamPath } = req.query;
 
-// API Routes
+  // Also check body (some versions send JSON)
+  const streamKey = user || req.body?.user || streamPath?.split('/')?.pop();
 
+  if (!streamKey) return res.status(401).json({ error: 'No stream key provided' });
+
+  const dbUser = getUserByStreamKey(streamKey);
+  if (!dbUser) {
+    console.log(`[StreamAuth] Rejected unknown stream key: ${streamKey}`);
+    return res.status(401).json({ error: 'Invalid stream key' });
+  }
+
+  console.log(`[StreamAuth] Accepted stream from: ${dbUser.username}`);
+  res.sendStatus(200);
+});
+
+// MediaMTX webhook: stream started (via on_publish.sh)
+// The stream key is extracted from the MTX_PATH env var in on_publish.sh
+app.post('/api/internal/obs-start', (req, res) => {
+  const streamKey = req.body?.streamKey || req.query?.streamKey;
+
+  if (streamKey) {
+    const user = getUserByStreamKey(streamKey);
+    if (user) {
+      const title = req.body?.title || `${user.display_name || user.username}'s Live Stream`;
+      updateUserLiveStatus(user.id, true, title);
+      startLiveSession(user.id, title);
+      // Update global activeLiveStream for legacy phone stream compatibility
+      activeLiveStream = {
+        id: `live-obs-${user.id}`,
+        userId: user.id,
+        username: user.username,
+        title,
+        uploader: user.display_name || user.username,
+        isLive: true,
+        startedAt: new Date().toISOString(),
+        views: 1,
+        thumbnailUrl: user.avatar_url || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
+      };
+      console.log(`[Webhook] Stream started: ${user.username}`);
+      return res.sendStatus(200);
+    }
+  }
+
+  // Fallback: no stream key in webhook (old behaviour)
+  if (!activeLiveStream || activeLiveStream.id === 'live-obs') {
+    activeLiveStream = {
+      id: 'live-obs',
+      title: '🔴 OBS Live Stream',
+      uploader: 'OBS Studio',
+      isLive: true,
+      startedAt: new Date().toISOString(),
+      views: 1,
+      thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
+    };
+  }
+  res.sendStatus(200);
+});
+
+app.post('/api/internal/obs-stop', (req, res) => {
+  const streamKey = req.body?.streamKey || req.query?.streamKey;
+
+  if (streamKey) {
+    const user = getUserByStreamKey(streamKey);
+    if (user) {
+      updateUserLiveStatus(user.id, false);
+      endLiveSession(user.id);
+      if (activeLiveStream?.userId === user.id) {
+        activeLiveStream = null;
+        liveViewers.clear();
+      }
+      console.log(`[Webhook] Stream ended: ${user.username}`);
+      return res.sendStatus(200);
+    }
+  }
+
+  if (activeLiveStream?.id === 'live-obs') {
+    activeLiveStream = null;
+    liveViewers.clear();
+  }
+  res.sendStatus(200);
+});
+
+// Legacy status endpoint
 app.get('/api/live/status', (req, res) => {
   res.json({
     active: !!activeLiveStream,
     stream: activeLiveStream,
     viewers: liveViewers.size + 1
   });
-});
-
-app.post('/api/internal/obs-start', (req, res) => {
-  // Only overwrite if it's not a phone stream
-  if (activeLiveStream && activeLiveStream.id !== 'live-obs') {
-    return res.sendStatus(200);
-  }
-  
-  console.log(`[Webhook] OBS Stream started via MediaMTX`);
-  activeLiveStream = {
-    id: 'live-obs',
-    title: '🔴 OBS Live Stream',
-    uploader: 'OBS Studio',
-    isLive: true,
-    startedAt: new Date().toISOString(),
-    views: 1,
-    thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
-  };
-  res.sendStatus(200);
-});
-
-app.post('/api/internal/obs-stop', (req, res) => {
-  if (activeLiveStream && activeLiveStream.id === 'live-obs') {
-    console.log(`[Webhook] OBS Stream ended via MediaMTX`);
-    activeLiveStream = null;
-    liveViewers.clear();
-  }
-  res.sendStatus(200);
 });
 
 app.get('/api/system/info', (req, res) => {
@@ -389,243 +433,158 @@ app.get('/api/system/info', (req, res) => {
     uptime: process.uptime(),
     platform: os.platform(),
     arch: os.arch(),
-    totalMem: Math.round(os.totalmem() / (1024 * 1024 * 1024)) + ' GB',
-    freeMem: Math.round(os.freemem() / (1024 * 1024 * 1024)) + ' GB'
+    totalMem: Math.round(os.totalmem() / (1024 ** 3)) + ' GB',
+    freeMem: Math.round(os.freemem() / (1024 ** 3)) + ' GB'
   });
 });
 
-app.get('/api/videos', (req, res) => {
-  const { search, category } = req.query;
-  const db = readDB();
-  let videos = db.videos;
+// ═══════════════════════════════════════════════════════════════════════════════
+// WEBSOCKET – PHONE CAMERA LIVE + CHAT
+// ═══════════════════════════════════════════════════════════════════════════════
 
-  if (category && category !== 'All') {
-    videos = videos.filter((v) => v.category.toLowerCase() === category.toLowerCase());
+const wssHttp = new WebSocketServer({ server: httpServer });
+let activeLiveStream = null;
+let publisherSocket = null;
+let liveViewers = new Set();
+let liveChunks = [];
+
+function broadcastToAll(message) {
+  const jsonStr = typeof message === 'string' ? message : JSON.stringify(message);
+  if (publisherSocket?.readyState === 1) publisherSocket.send(jsonStr);
+  liveViewers.forEach(v => { if (v.readyState === 1) v.send(jsonStr); });
+}
+
+function broadcastViewerCount() {
+  broadcastToAll({ type: 'viewers', count: liveViewers.size + 1 });
+}
+
+function finishLiveStream(fileWriteStream, filename) {
+  if (fileWriteStream) {
+    try { fileWriteStream.end(); } catch {}
   }
+  if (activeLiveStream && activeLiveStream.id === 'live-now') {
+    const title = activeLiveStream.title;
+    const userId = activeLiveStream.userId;
+    activeLiveStream = null;
+    liveViewers.clear();
 
-  if (search) {
-    const q = search.toLowerCase();
-    videos = videos.filter(
-      (v) =>
-        v.title.toLowerCase().includes(q) ||
-        v.description.toLowerCase().includes(q) ||
-        (v.tags && v.tags.some((t) => t.toLowerCase().includes(q)))
-    );
-  }
-
-  videos.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
-  res.json(videos);
-});
-
-app.get('/api/videos/:id', (req, res) => {
-  const db = readDB();
-  const video = db.videos.find((v) => v.id === req.params.id);
-
-  if (!video) {
-    return res.status(404).json({ error: 'Video not found' });
-  }
-
-  video.views = (video.views || 0) + 1;
-  writeDB(db);
-
-  res.json(video);
-});
-
-app.get('/api/videos/:id/stream', (req, res) => {
-  const db = readDB();
-  const video = db.videos.find((v) => v.id === req.params.id);
-
-  if (!video) {
-    return res.status(404).json({ error: 'Video not found' });
-  }
-
-  if (video.isExternal && video.videoUrl) {
-    return res.redirect(video.videoUrl);
-  }
-
-  const videoPath = path.join(VIDEOS_DIR, video.filename);
-
-  if (!fs.existsSync(videoPath)) {
-    return res.status(404).json({ error: 'Video file missing on server disk' });
-  }
-
-  const stat = fs.statSync(videoPath);
-  const fileSize = stat.size;
-  const range = req.headers.range;
-
-  const ext = path.extname(videoPath).toLowerCase();
-  let mimeType = 'video/mp4';
-  if (ext === '.webm') mimeType = 'video/webm';
-  if (ext === '.mkv') mimeType = 'video/x-matroska';
-
-  if (range) {
-    const parts = range.replace(/bytes=/, '').split('-');
-    const start = parseInt(parts[0], 10) || 0;
-    let end = parts[1] && parts[1].trim() !== '' ? parseInt(parts[1], 10) : fileSize - 1;
-
-    if (isNaN(end) || end >= fileSize) {
-      end = fileSize - 1;
+    // Save as VOD in SQLite if we have a user
+    if (userId) {
+      const vodId = randomUUID();
+      createVideo({
+        id: vodId,
+        userId,
+        title: `📱 Aufzeichnung: ${title}`,
+        description: 'Automatische Handy-Stream Aufzeichnung.',
+        filename,
+        thumbnailUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800&q=80',
+        category: 'General',
+        duration: 0,
+      });
+      console.log(`[VOD] Saved phone stream recording: ${title}`);
     }
-
-    if (start >= fileSize) {
-      res.status(416).send(`Requested range not satisfiable\n${start} >= ${fileSize}`);
-      return;
-    }
-
-    const chunksize = end - start + 1;
-    const file = fs.createReadStream(videoPath, { start, end });
-    const head = {
-      'Content-Range': `bytes ${start}-${end}/${fileSize}`,
-      'Accept-Ranges': 'bytes',
-      'Content-Length': chunksize,
-      'Content-Type': mimeType,
-      'Cache-Control': 'no-cache, no-store, must-revalidate',
-      'Access-Control-Allow-Origin': '*',
-    };
-
-    res.writeHead(206, head);
-    file.pipe(res);
-
-    file.on('error', (err) => {
-      console.error('Stream error:', err);
-    });
-  } else {
-    const head = {
-      'Content-Length': fileSize,
-      'Content-Type': mimeType,
-      'Accept-Ranges': 'bytes',
-      'Access-Control-Allow-Origin': '*',
-    };
-    res.writeHead(200, head);
-    fs.createReadStream(videoPath).pipe(res);
   }
-});
+}
 
-app.post(
-  '/api/upload',
-  upload.fields([
-    { name: 'video', maxCount: 1 },
-    { name: 'thumbnail', maxCount: 1 },
-  ]),
-  (req, res) => {
-    try {
-      const { title, description, category, tags, duration, customThumbnailData } = req.body;
-      const videoFile = req.files && req.files['video'] ? req.files['video'][0] : null;
+function setupWebSocket(wssInstance) {
+  wssInstance.on('connection', (ws, req) => {
+    const url = req.url || '';
 
-      if (!videoFile) {
-        return res.status(400).json({ error: 'Video file is required' });
+    if (url.includes('/live/publish')) {
+      console.log('📱 Phone stream publisher connected');
+      publisherSocket = ws;
+      const streamFilename = `live-rec-${Date.now()}.webm`;
+      const fileWriteStream = fs.createWriteStream(path.join(VIDEOS_DIR, streamFilename));
+      let streamUserId = null;
+
+      ws.on('message', (message, isBinary) => {
+        if (isBinary) {
+          try { fileWriteStream.write(message); } catch {}
+          liveChunks.push(message);
+          liveViewers.forEach(viewer => { if (viewer.readyState === 1) viewer.send(message); });
+        } else {
+          try {
+            const data = JSON.parse(message.toString());
+            if (data.type === 'start') {
+              // Optionally associate with logged-in user via token
+              if (data.token) {
+                try {
+                  const payload = jwt.verify(data.token, JWT_SECRET);
+                  streamUserId = payload.userId;
+                } catch {}
+              }
+              activeLiveStream = {
+                id: 'live-now',
+                userId: streamUserId,
+                title: data.title || '🔴 Handy Live Stream',
+                uploader: data.uploader || 'Handy Live Cam',
+                isLive: true,
+                startedAt: new Date().toISOString(),
+                views: 1,
+                thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
+              };
+              liveChunks = [];
+              if (streamUserId) {
+                updateUserLiveStatus(streamUserId, true, activeLiveStream.title);
+                startLiveSession(streamUserId, activeLiveStream.title);
+              }
+              console.log(`[WS] Phone stream started: ${activeLiveStream.title}`);
+            } else if (data.type === 'stop') {
+              if (streamUserId) {
+                updateUserLiveStatus(streamUserId, false);
+                endLiveSession(streamUserId);
+              }
+              finishLiveStream(fileWriteStream, streamFilename);
+            } else if (data.type === 'chat') {
+              broadcastToAll(data);
+            }
+          } catch {}
+        }
+      });
+
+      ws.on('close', () => {
+        publisherSocket = null;
+        if (streamUserId) {
+          updateUserLiveStatus(streamUserId, false);
+          endLiveSession(streamUserId);
+        }
+        finishLiveStream(fileWriteStream, streamFilename);
+      });
+
+    } else if (url.includes('/live/watch')) {
+      liveViewers.add(ws);
+      if (activeLiveStream && liveChunks.length > 0 && ws.readyState === 1) {
+        ws.send(liveChunks[0]);
+        liveChunks.slice(-10).forEach((chunk, i) => {
+          if (i > 0 && ws.readyState === 1) ws.send(chunk);
+        });
       }
-
-      const videoId = 'vod-' + Date.now();
-      let thumbnailUrl = '';
-
-      if (req.files && req.files['thumbnail']) {
-        thumbnailUrl = `/uploads/thumbnails/${req.files['thumbnail'][0].filename}`;
-      } else if (customThumbnailData && customThumbnailData.startsWith('data:image')) {
-        const base64Data = customThumbnailData.replace(/^data:image\/\w+;base64,/, '');
-        const thumbFilename = `thumb-${Date.now()}.jpg`;
-        const thumbPath = path.join(THUMBNAILS_DIR, thumbFilename);
-        fs.writeFileSync(thumbPath, base64Data, 'base64');
-        thumbnailUrl = `/uploads/thumbnails/${thumbFilename}`;
-      } else {
-        thumbnailUrl = 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?w=800&q=80';
-      }
-
-      const db = readDB();
-      const newVideo = {
-        id: videoId,
-        title: title || videoFile.originalname,
-        description: description || '',
-        category: category || 'General',
-        duration: duration ? parseFloat(duration) : 0,
-        views: 0,
-        likes: 0,
-        dislikes: 0,
-        uploader: 'Streamer',
-        createdAt: new Date().toISOString(),
-        filename: videoFile.filename,
-        videoUrl: `/api/videos/${videoId}/stream`,
-        thumbnailUrl,
-        mimeType: videoFile.mimetype,
-        sizeBytes: videoFile.size,
-        isExternal: false,
-        tags: tags ? tags.split(',').map((t) => t.trim()) : ['VOD'],
-        comments: [],
-      };
-
-      db.videos.unshift(newVideo);
-      writeDB(db);
-
-      console.log(`Uploaded new VOD: ${newVideo.title}`);
-      res.status(201).json(newVideo);
-    } catch (err) {
-      console.error('Upload failed:', err);
-      res.status(500).json({ error: 'Upload failed: ' + err.message });
+      ws.on('message', (message) => {
+        try {
+          const data = JSON.parse(message.toString());
+          if (data.type === 'chat') broadcastToAll(data);
+        } catch {}
+      });
+      broadcastViewerCount();
+      ws.on('close', () => { liveViewers.delete(ws); broadcastViewerCount(); });
     }
-  }
-);
-
-app.post('/api/videos/:id/like', (req, res) => {
-  const db = readDB();
-  const video = db.videos.find((v) => v.id === req.params.id);
-  if (!video) return res.status(404).json({ error: 'Video not found' });
-
-  video.likes = (video.likes || 0) + 1;
-  writeDB(db);
-  res.json({ likes: video.likes });
-});
-
-app.post('/api/videos/:id/comment', (req, res) => {
-  const { user, text } = req.body;
-  if (!text) return res.status(400).json({ error: 'Comment text required' });
-
-  const db = readDB();
-  const video = db.videos.find((v) => v.id === req.params.id);
-  if (!video) return res.status(404).json({ error: 'Video not found' });
-
-  const comment = {
-    id: 'c-' + Date.now(),
-    user: user || 'User',
-    text,
-    date: new Date().toISOString(),
-  };
-
-  video.comments = video.comments || [];
-  video.comments.unshift(comment);
-  writeDB(db);
-
-  res.status(201).json(comment);
-});
-
-app.delete('/api/videos/:id', (req, res) => {
-  const db = readDB();
-  const index = db.videos.findIndex((v) => v.id === req.params.id);
-
-  if (index === -1) return res.status(404).json({ error: 'Video not found' });
-
-  const [deletedVideo] = db.videos.splice(index, 1);
-
-  if (!deletedVideo.isExternal && deletedVideo.filename) {
-    const videoPath = path.join(VIDEOS_DIR, deletedVideo.filename);
-    if (fs.existsSync(videoPath)) fs.unlinkSync(videoPath);
-  }
-
-  writeDB(db);
-  res.json({ message: 'Video deleted successfully', id: req.params.id });
-});
-
-if (fs.existsSync(DIST_DIR)) {
-  app.get('*', (req, res) => {
-    res.sendFile(path.join(DIST_DIR, 'index.html'));
   });
 }
 
-// Listen HTTP
+setupWebSocket(wssHttp);
+if (httpsServer) setupWebSocket(new WebSocketServer({ server: httpsServer }));
+
+// ── Catch-all for SPA ─────────────────────────────────────────────────────────
+if (fs.existsSync(DIST_DIR)) {
+  app.get('*', (req, res) => res.sendFile(path.join(DIST_DIR, 'index.html')));
+}
+
+// ── Start Servers ─────────────────────────────────────────────────────────────
 httpServer.listen(PORT, '0.0.0.0', () => {
   const localIp = getLocalIp();
   console.log(`
   ======================================================
-  🎬 StreamHub Local Server Running
+  🎬 StreamHub Platform Server Running
   ======================================================
   HTTP  URL:   http://${localIp}:${PORT}
   HTTPS URL:   https://${localIp}:${HTTPS_PORT}
@@ -633,7 +592,6 @@ httpServer.listen(PORT, '0.0.0.0', () => {
   `);
 });
 
-// Listen HTTPS
 if (httpsServer) {
   httpsServer.listen(HTTPS_PORT, '0.0.0.0', () => {
     console.log(`🔒 HTTPS Server running on https://0.0.0.0:${HTTPS_PORT}`);

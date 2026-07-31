@@ -2,13 +2,15 @@ webrtcAdditionalHosts:
   - 192.168.178.69
 
 # ── Low-Latency HLS ────────────────────────────
-# Segment duration: 1s (statt default 6s)
-# Part duration: 0.2s (LL-HLS, Chunked Transfer)
-# → Ziel-Latenz: ~1-2 Sekunden (wie Twitch)
 hlsSegmentDuration: 1s
 hlsPartDuration: 0.2s
 hlsSegmentMaxSize: 50MB
 hlsAllowOrigin: '*'
+
+# ── HTTP Auth for Stream Keys ──────────────────
+authMethod: http
+authHTTPAddress: http://stream-hub:5000/api/internal/stream-auth
+authHTTPAction: publish
 
 paths:
   all_others:

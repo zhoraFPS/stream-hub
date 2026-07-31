@@ -1,5 +1,16 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { PlaySquare, Search, Upload, Wifi, QrCode, Radio, LogIn, LogOut, User, Settings, ChevronDown } from 'lucide-react';
+import { Search, Upload, Wifi, Radio, LogIn, LogOut, User, Settings, ChevronDown } from 'lucide-react';
+
+// VfL Bochum TV Logo – inline SVG for zero dependency
+function VflLogo({ size = 32 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="VfL Bochum TV Logo">
+      <rect width="32" height="32" rx="8" fill="#0055B8"/>
+      {/* Stylised "V" */}
+      <path d="M6 8 L11 22 L16 12 L21 22 L26 8" stroke="#FFD700" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+    </svg>
+  );
+}
 
 export default function Navbar({
   search, setSearch,
@@ -27,11 +38,12 @@ export default function Navbar({
 
         {/* Logo */}
         <button onClick={onHome}
-          style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: '4px 0' }}>
-          <div style={{ width: 32, height: 32, borderRadius: 8, background: 'linear-gradient(135deg, #0055b8, #0068e0)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <PlaySquare style={{ width: 18, height: 18, color: '#fff' }} />
+          style={{ display: 'flex', alignItems: 'center', gap: 9, background: 'none', border: 'none', cursor: 'pointer', flexShrink: 0, padding: '4px 0' }}>
+          <VflLogo size={32} />
+          <div style={{ display: 'none', flexDirection: 'column', lineHeight: 1.1 }} className="logo-text">
+            <span style={{ fontSize: 15, fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.02em' }}>VfL Bochum</span>
+            <span style={{ fontSize: 10, fontWeight: 600, color: '#FFD700', letterSpacing: '0.1em', textTransform: 'uppercase' }}>TV</span>
           </div>
-          <span style={{ fontSize: 16, fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.02em', display: 'none' }} className="logo-text">StreamHub</span>
         </button>
 
         {/* Search */}
@@ -84,7 +96,7 @@ export default function Navbar({
               onMouseEnter={e => e.currentTarget.style.background = 'rgba(255,255,255,0.09)'}
               onMouseLeave={e => e.currentTarget.style.background = 'rgba(255,255,255,0.05)'}>
               {/* Avatar */}
-              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg, #0055b8, #0068e0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff', overflow: 'hidden', flexShrink: 0 }}>
+              <div style={{ width: 28, height: 28, borderRadius: '50%', background: 'linear-gradient(135deg, #0055b8, #FFD700)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 13, fontWeight: 700, color: '#fff', overflow: 'hidden', flexShrink: 0 }}>
                 {currentUser.avatar_url
                   ? <img src={currentUser.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
                   : (currentUser.display_name || currentUser.username || '?')[0].toUpperCase()

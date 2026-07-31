@@ -26,11 +26,31 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
 
     if (Hls.isSupported()) {
       const hls = new Hls({
-        liveSyncDurationCount: 1,      // Keep 1 segment buffer (low latency)
-        liveMaxLatencyDurationCount: 4,
-        enableWorker: true,
-        lowLatencyMode: true,
-        backBufferLength: 8,
+        // ── Low-Latency HLS Settings ──────────────────
+        lowLatencyMode: true,          // LL-HLS aktivieren
+        liveSyncDuration: 1.0,         // Ziel: 1s hinter live edge
+        liveMaxLatencyDuration: 3.0,   // Ab 3s → automatisch zurückspringen
+        liveMinLatencyDuration: 0.5,   // Minimum buffer
+        latencyController: true,       // Automatische Latenz-Kontrolle
+
+        // ── Buffer & Performance ──────────────────────
+        enableWorker: true,            // Background-Thread für Demuxing
+        backBufferLength: 4,           // Nur 4s Rückpuffer (spart RAM)
+        maxBufferLength: 4,            // Max 4s vorausladen
+        maxMaxBufferLength: 8,         // Absolutes Maximum
+        maxBufferHole: 0.3,            // Kleine Lücken überbrücken
+
+        // ── Segment Fetching ──────────────────────────
+        progressive: false,
+        startFragPrefetch: true,       // Nächstes Segment vorladen
+        testBandwidth: false,          // Kein ABR nötig (single quality)
+
+        // ── Retry & Recovery ─────────────────────────
+        manifestLoadingMaxRetry: 10,
+        levelLoadingMaxRetry: 10,
+        fragLoadingMaxRetry: 6,
+        manifestLoadingRetryDelay: 500,
+        fragLoadingRetryDelay: 500,
       });
       hlsRef.current = hls;
 
@@ -38,27 +58,49 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
       hls.attachMedia(video);
 
       hls.on(Hls.Events.MANIFEST_PARSED, () => {
-        video.muted = true; // must start muted for autoplay
+        video.muted = true;
         video.play().then(() => {
           setIsPlaying(true);
           setIsBuffering(false);
         }).catch(() => setIsBuffering(false));
       });
 
+      // ── Auto-Recovery on Fatal Error ──────────────
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
-          console.error('[HLS] Fatal error:', data);
-          setIsBuffering(false);
+          switch (data.type) {
+            case Hls.ErrorTypes.NETWORK_ERROR:
+              console.warn('[HLS] Network error, retrying...');
+              hls.startLoad();
+              break;
+            case Hls.ErrorTypes.MEDIA_ERROR:
+              console.warn('[HLS] Media error, recovering...');
+              hls.recoverMediaError();
+              break;
+            default:
+              console.error('[HLS] Fatal error, reloading:', data);
+              hls.destroy();
+              break;
+          }
         }
       });
 
-      // Track latency
-      const latencyTimer = setInterval(() => {
+      // ── Lag Detection: Jump to Live Edge if too far behind ──
+      const lagTimer = setInterval(() => {
+        const v = videoRef.current;
+        if (!v || v.paused) return;
+        if (hls.latency > 5) {
+          console.warn(`[HLS] Lag detected (${hls.latency.toFixed(1)}s), jumping to live edge`);
+          hls.currentLevel = -1; // Auto-Quality
+          if (v.buffered.length > 0) {
+            v.currentTime = v.buffered.end(v.buffered.length - 1) - 0.3;
+          }
+        }
         if (hls.latency != null) setLatency(Math.round(hls.latency * 10) / 10);
       }, 2000);
 
       return () => {
-        clearInterval(latencyTimer);
+        clearInterval(lagTimer);
         hls.destroy();
       };
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {

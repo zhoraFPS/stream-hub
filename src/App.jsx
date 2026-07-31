@@ -310,31 +310,28 @@ export default function App() {
 
           <main style={{ flex: 1, padding: '20px 16px 48px', minWidth: 0 }}>
 
-            {/* ── LIVE STREAMS SECTION ────────────────────────────────────── */}
+            {/* ── LIVE STREAMS SECTION (TWITCH FEATURED HERO) ───────────────── */}
             {(liveChannels.length > 0 || activeLive) && (
               <section style={{ marginBottom: 36 }}>
-                <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 14 }}>
-                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 10px #ef4444', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
-                  <h2 style={{ fontSize: 15, fontWeight: 800, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                    Live jetzt
-                  </h2>
-                </div>
+                {/* Featured Hero Player */}
+                <FeaturedLiveHero
+                  channel={liveChannels[0] || (activeLive?.username ? activeLive : null)}
+                  onOpenChannel={openChannel}
+                />
 
-                <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
-                  {/* Legacy OBS stream (not tied to user account) */}
-                  {activeLive && !activeLive.userId && (
-                    <LiveChannelCard
-                      channel={{ display_name: activeLive.uploader || 'OBS Stream', username: 'obs', live_title: activeLive.title }}
-                      onClick={() => openVideo(activeLive)}
-                    />
-                  )}
-                  {/* Per-user channels */}
-                  {liveChannels.map(ch => (
-                    <LiveChannelCard key={ch.id} channel={ch}
-                      onClick={() => openChannel(ch.username)}
-                    />
-                  ))}
-                </div>
+                {/* Additional live channels */}
+                {liveChannels.length > 1 && (
+                  <div>
+                    <h3 style={{ fontSize: 14, fontWeight: 700, color: '#94a3b8', marginBottom: 12 }}>
+                      Weitere Live-Kanäle ({liveChannels.length - 1})
+                    </h3>
+                    <div style={{ display: 'flex', gap: 14, flexWrap: 'wrap' }}>
+                      {liveChannels.slice(1).map(ch => (
+                        <LiveChannelCard key={ch.id} channel={ch} onClick={() => openChannel(ch.username)} />
+                      ))}
+                    </div>
+                  </div>
+                )}
               </section>
             )}
 
@@ -433,6 +430,60 @@ function LiveChannelCard({ channel, onClick }) {
         </div>
         <div style={{ fontSize: 12, color: '#64748b', marginTop: 2, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {channel.live_title || 'Live Stream'}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Twitch Featured Live Hero Banner ─────────────────────────────────────────
+function FeaturedLiveHero({ channel, onOpenChannel }) {
+  if (!channel) return null;
+  const liveStreamInfo = {
+    id: `live-obs-${channel.id || 'legacy'}`,
+    userId: channel.id,
+    username: channel.username,
+    stream_key: channel.stream_key,
+    title: channel.live_title || channel.title || `${channel.display_name || channel.username}'s Stream`,
+    uploader: channel.display_name || channel.username,
+    isLive: true,
+  };
+
+  return (
+    <div style={{ background: 'var(--bg-card)', borderRadius: 16, border: '1px solid rgba(220,38,38,0.35)', overflow: 'hidden', marginBottom: 24, padding: 16, boxShadow: '0 8px 32px rgba(220,38,38,0.1)' }}>
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#ef4444', boxShadow: '0 0 8px #ef4444', display: 'inline-block', animation: 'pulse 1.5s infinite' }} />
+          <span style={{ fontSize: 13, fontWeight: 800, color: '#ef4444', textTransform: 'uppercase', letterSpacing: '0.08em' }}>
+            Featured Live Stream
+          </span>
+        </div>
+        {channel.username && (
+          <button onClick={() => onOpenChannel(channel.username)} className="btn-secondary" style={{ fontSize: 12, padding: '5px 12px', display: 'flex', alignItems: 'center', gap: 4 }}>
+            Kanal @{channel.username} besuchen →
+          </button>
+        )}
+      </div>
+
+      <LivePlayer liveStreamInfo={liveStreamInfo} onBack={null} />
+
+      <div style={{ marginTop: 14, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
+          <div style={{ width: 44, height: 44, borderRadius: '50%', background: 'linear-gradient(135deg, #0055b8, #0068e0)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 18, fontWeight: 700, color: '#fff', overflow: 'hidden', flexShrink: 0 }}>
+            {channel.avatar_url ? (
+              <img src={channel.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+            ) : (
+              (channel.display_name || channel.username || '?')[0].toUpperCase()
+            )}
+          </div>
+          <div>
+            <h3 style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>
+              {channel.live_title || channel.title || 'Live Stream'}
+            </h3>
+            <p style={{ fontSize: 13, color: '#64748b', marginTop: 2 }}>
+              {channel.display_name || channel.username} {channel.username && <span style={{ color: '#475569' }}>(@{channel.username})</span>}
+            </p>
+          </div>
         </div>
       </div>
     </div>

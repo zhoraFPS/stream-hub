@@ -14,12 +14,12 @@ function formatRelativeTime(dateString) {
   const diff = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
   if (diff < 3600) return 'Gerade eben';
   const hours = Math.floor(diff / 3600);
-  if (hours < 24) return `vor ${hours} Stunden`;
+  if (hours < 24) return `vor ${hours} Std.`;
   const days = Math.floor(hours / 24);
   return `vor ${days} Tagen`;
 }
 
-export default function VideoCard({ video, onSelectVideo, onDeleteVideo, systemInfo }) {
+export default function VideoCard({ video, onSelectVideo, onDeleteVideo }) {
   return (
     <div className="video-card" onClick={() => onSelectVideo(video)}>
       <div className="video-card-thumb">
@@ -31,30 +31,35 @@ export default function VideoCard({ video, onSelectVideo, onDeleteVideo, systemI
 
         <span className="badge-duration">{formatDuration(video.duration)}</span>
 
-        <button
-          className="video-card-delete"
-          onClick={(e) => {
-            e.stopPropagation();
-            onDeleteVideo(video.id);
-          }}
-        >
-          <Trash2 size={14} />
-        </button>
+        {onDeleteVideo && (
+          <button
+            className="video-card-delete"
+            title="Video löschen"
+            onClick={(e) => {
+              e.stopPropagation();
+              onDeleteVideo(video.id);
+            }}
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
       </div>
 
       <div className="video-card-info">
         <h3 className="video-card-title">{video.title}</h3>
 
         <p className="video-card-meta">
-          {video.uploader || 'Unbekannt'} • {formatRelativeTime(video.createdAt)}
+          <span>{video.uploader || 'Unbekannt'}</span>
+          <span>•</span>
+          <span>{formatRelativeTime(video.createdAt || video.created_at)}</span>
         </p>
 
-        <div className="video-card-stats">
-          <span className="video-card-stat">
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 8, fontSize: 11, color: '#64748b', fontWeight: 600 }}>
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <Eye size={12} />
             {video.views ?? 0}
           </span>
-          <span className="video-card-stat">
+          <span style={{ display: 'inline-flex', alignItems: 'center', gap: 4 }}>
             <ThumbsUp size={12} />
             {video.likes ?? 0}
           </span>

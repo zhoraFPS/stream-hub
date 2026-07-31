@@ -1,13 +1,12 @@
 import React, { useState } from 'react';
 import { User, Lock, Mail, Eye, EyeOff, AlertCircle } from 'lucide-react';
 
-// VfL Bochum Crest – SVG inline
+// VfL Bochum Crest – Sharp Square SVG
 function VflCrest() {
   return (
     <svg width="56" height="56" viewBox="0 0 56 56" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="VfL Bochum">
-      <rect width="56" height="56" rx="14" fill="#0055B8"/>
-      {/* V shape */}
-      <path d="M10 14 L19 38 L28 20 L37 38 L46 14" stroke="#FFD700" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" fill="none"/>
+      <rect width="56" height="56" fill="#0055B8" stroke="rgba(255,255,255,0.3)" strokeWidth="1"/>
+      <path d="M11 15 L21 41 L28 23 L35 41 L45 15" stroke="#FFFFFF" strokeWidth="4" strokeLinecap="square" strokeLinejoin="miter" fill="none"/>
     </svg>
   );
 }
@@ -48,25 +47,25 @@ export default function AuthPage({ onAuth }) {
 
   return (
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 24, background: 'var(--bg-main)' }}>
-      <div style={{ width: '100%', maxWidth: 400 }}>
+      <div style={{ width: '100%', maxWidth: 420 }}>
         {/* Logo */}
         <div style={{ textAlign: 'center', marginBottom: 32 }}>
           <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 14 }}>
             <VflCrest />
           </div>
-          <h1 style={{ fontSize: 24, fontWeight: 800, color: '#f8fafc', letterSpacing: '-0.02em' }}>VfL Bochum TV</h1>
-          <p style={{ fontSize: 13, color: '#475569', marginTop: 4 }}>
+          <h1 style={{ fontSize: 24, fontWeight: 900, color: '#f8fafc', letterSpacing: '0.04em', textTransform: 'uppercase' }}>VfL Bochum TV</h1>
+          <p style={{ fontSize: 12, color: '#64748b', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.05em' }}>
             {mode === 'login' ? 'Anmelden für exklusive Inhalte' : 'Kostenlosen Account erstellen'}
           </p>
         </div>
 
         {/* Card */}
-        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, padding: 28 }}>
+        <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-strong)', padding: 28 }}>
           {/* Tabs */}
-          <div style={{ display: 'flex', background: 'var(--bg-surface)', borderRadius: 10, padding: 4, marginBottom: 24 }}>
+          <div style={{ display: 'flex', background: 'var(--bg-surface)', border: '1px solid var(--border)', padding: 3, marginBottom: 24 }}>
             {['login', 'register'].map(m => (
               <button key={m} onClick={() => { setMode(m); setError(''); }}
-                style={{ flex: 1, padding: '8px 0', borderRadius: 8, border: 'none', cursor: 'pointer', fontSize: 13, fontWeight: 600,
+                style={{ flex: 1, padding: '9px 0', border: 'none', cursor: 'pointer', fontSize: 12, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em',
                   background: mode === m ? 'var(--accent)' : 'none',
                   color: mode === m ? '#fff' : '#64748b',
                   transition: 'all 0.15s' }}>
@@ -96,28 +95,28 @@ export default function AuthPage({ onAuth }) {
                 style={{ paddingRight: 42 }}
               />
               <button type="button" onClick={() => setShowPw(v => !v)}
-                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#475569' }}>
+                style={{ position: 'absolute', right: 12, top: '50%', transform: 'translateY(-50%)', background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
                 {showPw ? <EyeOff size={16} /> : <Eye size={16} />}
               </button>
             </div>
 
             {error && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', borderRadius: 8, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.2)', fontSize: 13, color: '#ef4444' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '10px 12px', background: 'rgba(239,68,68,0.1)', border: '1px solid #ef4444', fontSize: 12, color: '#ef4444', fontWeight: 600 }}>
                 <AlertCircle size={14} style={{ flexShrink: 0 }} />
                 {error}
               </div>
             )}
 
             <button type="submit" disabled={loading} className="btn-primary"
-              style={{ width: '100%', padding: '11px 0', fontSize: 14, fontWeight: 700, justifyContent: 'center', marginTop: 4,
+              style={{ width: '100%', padding: '12px 0', fontSize: 13, fontWeight: 800, justifyContent: 'center', marginTop: 4,
                 opacity: loading ? 0.6 : 1, cursor: loading ? 'not-allowed' : 'pointer' }}>
-              {loading ? 'Bitte warten…' : mode === 'login' ? 'Anmelden' : 'Account erstellen'}
+              {loading ? 'BITTE WARTEN...' : mode === 'login' ? 'ANMELDEN' : 'ACCOUNT ERSTELLEN'}
             </button>
           </form>
         </div>
 
-        <p style={{ textAlign: 'center', fontSize: 12, color: '#334155', marginTop: 20 }}>
-          Nur für autorisierte VfL-Mitarbeiter und Redakteure.
+        <p style={{ textAlign: 'center', fontSize: 11, color: '#475569', marginTop: 20, textTransform: 'uppercase', letterSpacing: '0.04em' }}>
+          Das offizielle Media-Portal des VfL Bochum 1848.
         </p>
       </div>
     </div>
@@ -127,7 +126,7 @@ export default function AuthPage({ onAuth }) {
 function Field({ icon: Icon, style, ...props }) {
   return (
     <div style={{ position: 'relative' }}>
-      <Icon style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 15, height: 15, color: '#475569', pointerEvents: 'none' }} />
+      <Icon style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', width: 15, height: 15, color: '#64748b', pointerEvents: 'none' }} />
       <input
         className="input-search"
         style={{ width: '100%', paddingLeft: 38, ...style }}

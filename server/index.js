@@ -477,7 +477,7 @@ function finishLiveStream(fileWriteStream, filename) {
       createVideo({
         id: vodId,
         userId,
-        title: `📱 Aufzeichnung: ${title}`,
+        title: `Aufzeichnung: ${title}`,
         description: 'Automatische Handy-Stream Aufzeichnung.',
         filename,
         thumbnailUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800&q=80',
@@ -519,7 +519,7 @@ function setupWebSocket(wssInstance) {
               activeLiveStream = {
                 id: 'live-now',
                 userId: streamUserId,
-                title: data.title || '🔴 Handy Live Stream',
+                title: data.title || 'Handy Live Stream',
                 uploader: data.uploader || 'Handy Live Cam',
                 isLive: true,
                 startedAt: new Date().toISOString(),

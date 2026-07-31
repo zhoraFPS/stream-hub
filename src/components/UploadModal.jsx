@@ -1,14 +1,14 @@
 import React, { useState, useRef } from 'react';
 import { X, UploadCloud, Film, Image as ImageIcon, Camera, Loader2, Smartphone } from 'lucide-react';
 
-// VfL Bochum TV – Kategorien
+// VfL Bochum TV – Kategorien (Strictly Emoji-Free)
 const CATEGORIES = [
-  { value: 'Spiele',           label: '⚽ Spiele (Freundschaft / Test)' },
-  { value: 'Interviews',       label: '🎙️ Interviews' },
-  { value: 'Training',         label: '🏃 Training' },
-  { value: 'Highlights',       label: '🌟 Highlights' },
-  { value: 'Hinter_Kulissen',  label: '🎬 Behind the Scenes' },
-  { value: 'News',             label: '📰 News & Berichte' },
+  { value: 'Spiele',           label: 'Spiele (Freundschaft / Test)' },
+  { value: 'Interviews',       label: 'Interviews' },
+  { value: 'Training',         label: 'Training' },
+  { value: 'Highlights',       label: 'Highlights' },
+  { value: 'Hinter_Kulissen',  label: 'Behind the Scenes' },
+  { value: 'News',             label: 'News & Berichte' },
 ];
 
 export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
@@ -132,13 +132,13 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
     : autoThumbnailData || null;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, width: '100%', maxWidth: 540, maxHeight: '90vh', overflowY: 'auto' }}>
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border-strong)', width: '100%', maxWidth: 540, maxHeight: '90vh', overflowY: 'auto' }}>
         {/* Header */}
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
           <div>
-            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Video hochladen</h2>
-            <p style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>VfL Bochum TV – Inhalte für unsere Fans</p>
+            <h2 style={{ fontSize: 16, fontWeight: 900, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.04em' }}>Video hochladen</h2>
+            <p style={{ fontSize: 11, color: '#64748b', marginTop: 2, textTransform: 'uppercase' }}>VfL Bochum TV – Media Manager</p>
           </div>
           <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}>
             <X size={20} />
@@ -154,23 +154,23 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
               onDrop={handleDrop}
               style={{
                 border: `2px dashed ${dragActive ? 'var(--accent)' : 'var(--border)'}`,
-                borderRadius: 12, padding: '36px 20px', textAlign: 'center',
+                padding: '36px 20px', textAlign: 'center',
                 background: dragActive ? 'rgba(0,85,184,0.06)' : 'var(--bg-surface)',
                 transition: 'all 0.15s', cursor: 'pointer',
               }}
               onClick={() => videoInputRef.current?.click()}
             >
               <UploadCloud style={{ width: 36, height: 36, color: 'var(--accent)', margin: '0 auto 12px' }} />
-              <p style={{ fontSize: 14, fontWeight: 600, color: '#f8fafc', marginBottom: 6 }}>Video hier ablegen oder klicken</p>
-              <p style={{ fontSize: 12, color: '#475569' }}>MP4, WebM, MKV, MOV – bis 10 GB</p>
+              <p style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc', marginBottom: 6, textTransform: 'uppercase' }}>Video hier ablegen oder klicken</p>
+              <p style={{ fontSize: 11, color: '#64748b' }}>MP4, WebM, MKV, MOV – bis 10 GB</p>
               <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
                 <button type="button" onClick={(e) => { e.stopPropagation(); videoInputRef.current?.click(); }}
-                  className="btn-primary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Film size={14} /> Datei wählen
+                  className="btn-primary" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Film size={14} /> DATEI WÄHLEN
                 </button>
                 <button type="button" onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }}
-                  className="btn-secondary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
-                  <Smartphone size={14} /> Kamera / Handy
+                  className="btn-secondary" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Smartphone size={14} /> KAMERA / HANDY
                 </button>
               </div>
               <input ref={videoInputRef} type="file" accept="video/*" style={{ display: 'none' }}
@@ -179,11 +179,11 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
                 onChange={e => handleVideoSelect(e.target.files?.[0])} />
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'rgba(0,85,184,0.08)', border: '1px solid rgba(0,85,184,0.25)', borderRadius: 10 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'rgba(0,85,184,0.1)', border: '1px solid var(--accent)' }}>
               <Film style={{ width: 20, height: 20, color: 'var(--accent)', flexShrink: 0 }} />
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{videoFile.name}</div>
-                <div style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>{(videoFile.size / (1024 ** 2)).toFixed(1)} MB</div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{videoFile.name}</div>
+                <div style={{ fontSize: 11, color: '#64748b', marginTop: 2 }}>{(videoFile.size / (1024 ** 2)).toFixed(1)} MB</div>
               </div>
               <button onClick={() => { setVideoFile(null); setAutoThumbnailData(null); }}
                 style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
@@ -195,14 +195,14 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
           {/* Thumbnail preview */}
           {thumbPreview && (
             <div>
-              <p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+              <p style={{ fontSize: 11, fontWeight: 800, color: '#94a3b8', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6, textTransform: 'uppercase' }}>
                 <ImageIcon size={13} />
                 {isCapturingThumb ? 'Vorschau wird generiert…' : 'Vorschaubild'}
               </p>
               <div style={{ position: 'relative', display: 'inline-block' }}>
-                <img src={thumbPreview} alt="Thumbnail" style={{ width: 200, height: 112, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+                <img src={thumbPreview} alt="Thumbnail" style={{ width: 200, height: 112, objectFit: 'cover', border: '1px solid var(--border)' }} />
                 <button onClick={() => thumbInputRef.current?.click()}
-                  style={{ position: 'absolute', bottom: 6, right: 6, background: 'rgba(0,0,0,0.75)', border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: 11, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  style={{ position: 'absolute', bottom: 6, right: 6, background: 'rgba(0,0,0,0.85)', border: '1px solid var(--border)', padding: '4px 8px', fontSize: 11, fontWeight: 700, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4, textTransform: 'uppercase' }}>
                   <Camera size={12} /> Ändern
                 </button>
                 <input ref={thumbInputRef} type="file" accept="image/*" style={{ display: 'none' }}
@@ -213,7 +213,7 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
 
           {/* Title */}
           <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Titel *</label>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase' }}>Titel *</label>
             <input
               type="text"
               value={title}
@@ -226,7 +226,7 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
 
           {/* Description */}
           <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Beschreibung</label>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase' }}>Beschreibung</label>
             <textarea
               value={description}
               onChange={e => setDescription(e.target.value)}
@@ -239,7 +239,7 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
 
           {/* Category */}
           <div>
-            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Kategorie</label>
+            <label style={{ display: 'block', fontSize: 11, fontWeight: 800, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase' }}>Kategorie</label>
             <select
               value={category}
               onChange={e => setCategory(e.target.value)}
@@ -255,26 +255,26 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
           {/* Upload progress */}
           {isUploading && (
             <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 700, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase' }}>
                 <span>Hochladen…</span>
                 <span>{uploadProgress}%</span>
               </div>
-              <div style={{ height: 6, background: 'var(--bg-surface)', borderRadius: 99 }}>
-                <div style={{ height: '100%', background: 'var(--accent)', borderRadius: 99, width: `${uploadProgress}%`, transition: 'width 0.2s' }} />
+              <div style={{ height: 6, background: 'var(--bg-surface)', border: '1px solid var(--border)' }}>
+                <div style={{ height: '100%', background: 'var(--accent)', width: `${uploadProgress}%`, transition: 'width 0.2s' }} />
               </div>
             </div>
           )}
 
           {/* Actions */}
           <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 4 }}>
-            <button onClick={onClose} disabled={isUploading} className="btn-secondary" style={{ fontSize: 13 }}>Abbrechen</button>
+            <button onClick={onClose} disabled={isUploading} className="btn-secondary" style={{ fontSize: 12 }}>ABBRECHEN</button>
             <button
               onClick={handleUpload}
               disabled={!videoFile || isUploading}
               className="btn-primary"
-              style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: (!videoFile || isUploading) ? 0.5 : 1 }}
+              style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, opacity: (!videoFile || isUploading) ? 0.5 : 1 }}
             >
-              {isUploading ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Wird hochgeladen…</> : <><UploadCloud size={14} /> Hochladen</>}
+              {isUploading ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> WIRD HOCHGELADEN…</> : <><UploadCloud size={14} /> HOCHLADEN</>}
             </button>
           </div>
         </div>

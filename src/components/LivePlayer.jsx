@@ -2,7 +2,7 @@ import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Hls from 'hls.js';
 import {
   Radio, Users, Volume2, VolumeX, ArrowLeft, MessageSquare,
-  Send, Play, Pause, Maximize, Minimize, Settings, Wifi
+  Send, Play, Pause, Maximize, Minimize, Wifi
 } from 'lucide-react';
 
 // ─── HLS Player for OBS Streams ──────────────────────────────────────────────
@@ -26,26 +26,22 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
 
     if (Hls.isSupported()) {
       const hls = new Hls({
-        // ── Low-Latency HLS Settings ──────────────────
-        lowLatencyMode: true,          // LL-HLS aktivieren
-        liveSyncDuration: 1.0,         // Ziel: 1s hinter live edge
-        liveMaxLatencyDuration: 3.0,   // Ab 3s → automatisch zurückspringen
-        liveMinLatencyDuration: 0.5,   // Minimum buffer
-        latencyController: true,       // Automatische Latenz-Kontrolle
+        lowLatencyMode: true,
+        liveSyncDuration: 1.0,
+        liveMaxLatencyDuration: 3.0,
+        liveMinLatencyDuration: 0.5,
+        latencyController: true,
 
-        // ── Buffer & Performance ──────────────────────
-        enableWorker: true,            // Background-Thread für Demuxing
-        backBufferLength: 4,           // Nur 4s Rückpuffer (spart RAM)
-        maxBufferLength: 4,            // Max 4s vorausladen
-        maxMaxBufferLength: 8,         // Absolutes Maximum
-        maxBufferHole: 0.3,            // Kleine Lücken überbrücken
+        enableWorker: true,
+        backBufferLength: 4,
+        maxBufferLength: 4,
+        maxMaxBufferLength: 8,
+        maxBufferHole: 0.3,
 
-        // ── Segment Fetching ──────────────────────────
         progressive: false,
-        startFragPrefetch: true,       // Nächstes Segment vorladen
-        testBandwidth: false,          // Kein ABR nötig (single quality)
+        startFragPrefetch: true,
+        testBandwidth: false,
 
-        // ── Retry & Recovery ─────────────────────────
         manifestLoadingMaxRetry: 10,
         levelLoadingMaxRetry: 10,
         fragLoadingMaxRetry: 6,
@@ -65,7 +61,6 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
         }).catch(() => setIsBuffering(false));
       });
 
-      // ── Auto-Recovery on Fatal Error ──────────────
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           switch (data.type) {
@@ -85,13 +80,12 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
         }
       });
 
-      // ── Lag Detection: Jump to Live Edge if too far behind ──
       const lagTimer = setInterval(() => {
         const v = videoRef.current;
         if (!v || v.paused) return;
         if (hls.latency > 5) {
           console.warn(`[HLS] Lag detected (${hls.latency.toFixed(1)}s), jumping to live edge`);
-          hls.currentLevel = -1; // Auto-Quality
+          hls.currentLevel = -1;
           if (v.buffered.length > 0) {
             v.currentTime = v.buffered.end(v.buffered.length - 1) - 0.3;
           }
@@ -104,31 +98,26 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
         hls.destroy();
       };
     } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      // Native HLS (Safari)
       video.src = hlsUrl;
       video.muted = true;
       video.play().then(() => { setIsPlaying(true); setIsBuffering(false); }).catch(() => setIsBuffering(false));
     }
   }, [hlsUrl]);
 
-  // Sync muted state
   useEffect(() => {
     if (videoRef.current) videoRef.current.muted = isMuted;
   }, [isMuted]);
 
-  // Sync volume
   useEffect(() => {
     if (videoRef.current) videoRef.current.volume = volume;
   }, [volume]);
 
-  // Auto-hide controls
   const showControlsTemporarily = useCallback(() => {
     setShowControls(true);
     clearTimeout(hideTimer.current);
     hideTimer.current = setTimeout(() => setShowControls(false), 3000);
   }, []);
 
-  // Fullscreen
   const toggleFullscreen = () => {
     if (!document.fullscreenElement) {
       containerRef.current?.requestFullscreen();
@@ -160,7 +149,7 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
       onMouseMove={showControlsTemporarily}
       onMouseLeave={() => { clearTimeout(hideTimer.current); setShowControls(false); }}
       onMouseEnter={showControlsTemporarily}
-      style={{ position: 'relative', background: '#000', borderRadius: isFullscreen ? 0 : 12, overflow: 'hidden', aspectRatio: isFullscreen ? 'unset' : '16/9', height: isFullscreen ? '100vh' : undefined, cursor: showControls ? 'default' : 'none' }}
+      style={{ position: 'relative', background: '#000', border: '1px solid var(--border)', overflow: 'hidden', aspectRatio: isFullscreen ? 'unset' : '16/9', height: isFullscreen ? '100vh' : undefined, cursor: showControls ? 'default' : 'none' }}
     >
       <video
         ref={videoRef}
@@ -172,9 +161,9 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
 
       {/* Buffering Spinner */}
       {isBuffering && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.5)', gap: 12 }}>
-          <div style={{ width: 40, height: 40, border: '3px solid rgba(255,255,255,0.15)', borderTop: '3px solid #0055b8', borderRadius: '50%', animation: 'spin 0.8s linear infinite' }} />
-          <span style={{ color: '#94a3b8', fontSize: 12, fontWeight: 600 }}>Stream wird geladen…</span>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', gap: 12 }}>
+          <div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.2)', borderTop: '3px solid #0055b8', animation: 'spin 0.8s linear infinite' }} />
+          <span style={{ color: '#94a3b8', fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.05em' }}>Stream wird geladen…</span>
         </div>
       )}
 
@@ -184,14 +173,14 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
       {/* Top Bar */}
       <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '12px 16px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: showControls ? 1 : 0, transition: 'opacity 0.3s ease', pointerEvents: showControls ? 'auto' : 'none' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#dc2626', padding: '3px 8px', borderRadius: 4, fontSize: 11, fontWeight: 800, letterSpacing: '0.1em', color: '#fff' }}>
-            <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff', animation: 'pulse 1.5s infinite' }} />
+          <div className="live-badge">
+            <span style={{ width: 6, height: 6, background: '#fff', animation: 'pulse 1.5s infinite' }} />
             LIVE
           </div>
           {latency && (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.6)', padding: '3px 8px', borderRadius: 4, fontSize: 10, color: '#94a3b8' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 4, background: 'rgba(0,0,0,0.7)', border: '1px solid var(--border)', padding: '3px 8px', fontSize: 10, color: '#94a3b8', fontWeight: 700 }}>
               <Wifi style={{ width: 10, height: 10 }} />
-              {latency}s
+              {latency}s LATENZ
             </div>
           )}
         </div>
@@ -200,8 +189,8 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
       {/* Center Play/Pause on click */}
       <div onClick={handlePlay} style={{ position: 'absolute', inset: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
         {!isPlaying && !isBuffering && (
-          <div style={{ width: 64, height: 64, borderRadius: '50%', background: 'rgba(0,85,184,0.9)', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 32px rgba(0,85,184,0.5)', backdropFilter: 'blur(4px)' }}>
-            <Play style={{ width: 28, height: 28, color: '#fff', fill: '#fff', marginLeft: 4 }} />
+          <div style={{ width: 60, height: 60, background: '#0055b8', border: '1px solid rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <Play style={{ width: 26, height: 26, color: '#fff', fill: '#fff', marginLeft: 4 }} />
           </div>
         )}
       </div>
@@ -209,12 +198,10 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
       {/* Bottom Controls */}
       <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '12px 16px', display: 'flex', alignItems: 'center', gap: 12, opacity: showControls ? 1 : 0, transition: 'opacity 0.3s ease', pointerEvents: showControls ? 'auto' : 'none' }}>
         
-        {/* Play/Pause */}
         <button onClick={handlePlay} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#fff', display: 'flex' }}>
           {isPlaying ? <Pause style={{ width: 20, height: 20 }} /> : <Play style={{ width: 20, height: 20, fill: '#fff' }} />}
         </button>
 
-        {/* Volume */}
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <button onClick={() => setIsMuted(!isMuted)} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#fff', display: 'flex' }}>
             {isMuted || volume === 0 ? <VolumeX style={{ width: 18, height: 18 }} /> : <Volume2 style={{ width: 18, height: 18 }} />}
@@ -226,16 +213,14 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
           />
         </div>
 
-        {/* Live indicator / skip to live */}
         <button
           onClick={() => { if (hlsRef.current) hlsRef.current.currentLevel = hlsRef.current.levels.length - 1; if (videoRef.current) { const buf = videoRef.current.buffered; if (buf.length) videoRef.current.currentTime = buf.end(buf.length - 1) - 0.5; } }}
-          style={{ marginLeft: 'auto', background: 'rgba(220,38,38,0.15)', border: '1px solid rgba(220,38,38,0.4)', borderRadius: 4, cursor: 'pointer', padding: '4px 10px', fontSize: 11, fontWeight: 700, color: '#ef4444', letterSpacing: '0.05em', display: 'flex', alignItems: 'center', gap: 5 }}
+          style={{ marginLeft: 'auto', background: 'rgba(220,38,38,0.15)', border: '1px solid #dc2626', cursor: 'pointer', padding: '4px 10px', fontSize: 10, fontWeight: 800, color: '#ef4444', letterSpacing: '0.06em', display: 'flex', alignItems: 'center', gap: 5, textTransform: 'uppercase' }}
         >
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#ef4444' }} />
+          <span style={{ width: 6, height: 6, background: '#ef4444' }} />
           ZUM LIVE-EDGE
         </button>
 
-        {/* Fullscreen */}
         <button onClick={toggleFullscreen} style={{ background: 'none', border: 'none', cursor: 'pointer', padding: 4, color: '#fff', display: 'flex' }}>
           {isFullscreen ? <Minimize style={{ width: 18, height: 18 }} /> : <Maximize style={{ width: 18, height: 18 }} />}
         </button>
@@ -257,7 +242,7 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
   const [isMuted, setIsMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [comments, setComments] = useState([
-    { id: 'sys-1', user: 'System', text: '🎬 Stream gestartet — Willkommen!', isSystem: true }
+    { id: 'sys-1', user: 'SYSTEM', text: 'STREAM GESTARTET — WILLKOMMEN!', isSystem: true }
   ]);
   const [commentText, setCommentText] = useState('');
   const [commentUser, setCommentUser] = useState('');
@@ -291,7 +276,6 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
     }
   };
 
-  // Phone stream WebSocket setup
   useEffect(() => {
     if (isObs) return;
 
@@ -316,7 +300,6 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
     }
   }, [isObs]);
 
-  // WebSocket for chat + viewer count (both stream types)
   useEffect(() => {
     const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     const wsPort = window.location.port || '5000';
@@ -347,7 +330,7 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
   const handleCommentSubmit = (e) => {
     e.preventDefault();
     if (!commentText.trim()) return;
-    const user = commentUser.trim() || 'Zuschauer';
+    const user = commentUser.trim() || 'ZUSCHAUER';
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'chat', user, text: commentText.trim() }));
     } else {
@@ -361,25 +344,24 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
       
       {/* Header */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-        <button onClick={onBack} className="btn-secondary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
-          <ArrowLeft style={{ width: 14, height: 14 }} /> Zurück
+        <button onClick={onBack} className="btn-secondary" style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6, flexShrink: 0 }}>
+          <ArrowLeft style={{ width: 14, height: 14 }} /> ZURÜCK
         </button>
-        <h1 style={{ fontSize: 15, fontWeight: 700, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <h1 style={{ fontSize: 15, fontWeight: 800, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
           {liveStreamInfo?.title || 'Live Stream'}
         </h1>
-        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, color: '#94a3b8', flexShrink: 0 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#94a3b8', flexShrink: 0, textTransform: 'uppercase' }}>
           <Users style={{ width: 14, height: 14 }} />
-          {viewerCount} Zuschauer
+          {viewerCount} ZUSCHAUER
         </div>
       </div>
 
-      {/* Main Layout: Player + Chat (Twitch-style) */}
+      {/* Main Layout: Player + Chat */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 12, alignItems: 'start' }} className="live-layout-grid">
 
         {/* Left: Video + Info */}
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10, minWidth: 0 }}>
           
-          {/* HLS Player (OBS) or Phone Player */}
           {isObs ? (
             <HLSPlayer
               hlsUrl={hlsUrl}
@@ -389,69 +371,66 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
               setIsPlaying={setIsPlaying}
             />
           ) : (
-            /* Phone Camera Player */
-            <div style={{ position: 'relative', background: '#000', borderRadius: 12, overflow: 'hidden', aspectRatio: '16/9' }}>
+            <div style={{ position: 'relative', background: '#000', border: '1px solid var(--border)', overflow: 'hidden', aspectRatio: '16/9' }}>
               <video ref={videoRef} autoPlay playsInline muted={isMuted} style={{ width: '100%', height: '100%', objectFit: 'contain' }} onPlaying={() => setIsPlaying(true)} />
               {!isPlaying && (
                 <button onClick={() => videoRef.current?.play().then(() => setIsPlaying(true)).catch(() => {})}
-                  style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.6)', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
-                  <div style={{ width: 64, height: 64, borderRadius: '50%', background: '#0055b8', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 0 32px rgba(0,85,184,0.5)' }}>
-                    <Play style={{ width: 28, height: 28, color: '#fff', fill: '#fff', marginLeft: 4 }} />
+                  style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.7)', border: 'none', cursor: 'pointer', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
+                  <div style={{ width: 60, height: 60, background: '#0055b8', border: '1px solid rgba(255,255,255,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <Play style={{ width: 26, height: 26, color: '#fff', fill: '#fff', marginLeft: 4 }} />
                   </div>
-                  <span style={{ fontSize: 12, fontWeight: 700, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Stream abspielen</span>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: '#fff', textTransform: 'uppercase', letterSpacing: '0.08em' }}>Stream abspielen</span>
                 </button>
               )}
-              {/* Live Badge */}
-              <div style={{ position: 'absolute', top: 12, left: 12, display: 'flex', alignItems: 'center', gap: 6, background: 'rgba(220,38,38,0.9)', padding: '4px 10px', borderRadius: 4, fontSize: 11, fontWeight: 800, color: '#fff' }}>
-                <span style={{ width: 6, height: 6, borderRadius: '50%', background: '#fff', animation: 'pulse 1.5s infinite' }} />
+              <div className="live-badge" style={{ position: 'absolute', top: 12, left: 12 }}>
+                <span style={{ width: 6, height: 6, background: '#fff', animation: 'pulse 1.5s infinite' }} />
                 LIVE
               </div>
-              {/* Volume */}
-              <button onClick={() => setIsMuted(!isMuted)} style={{ position: 'absolute', bottom: 12, right: 12, padding: 8, borderRadius: 6, background: 'rgba(0,0,0,0.7)', border: '1px solid rgba(255,255,255,0.15)', color: '#fff', cursor: 'pointer' }}>
+              <button onClick={() => setIsMuted(!isMuted)} style={{ position: 'absolute', bottom: 12, right: 12, padding: 8, background: 'rgba(0,0,0,0.8)', border: '1px solid var(--border)', color: '#fff', cursor: 'pointer' }}>
                 {isMuted ? <VolumeX style={{ width: 16, height: 16 }} /> : <Volume2 style={{ width: 16, height: 16 }} />}
               </button>
             </div>
           )}
 
           {/* Stream Info Bar */}
-          <div style={{ padding: '10px 14px', borderRadius: 10, background: 'var(--bg-card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 10 }}>
-            <div style={{ width: 36, height: 36, borderRadius: 8, background: 'linear-gradient(135deg, #0055b8, #0068e0)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+          <div style={{ padding: '12px 16px', background: 'var(--bg-card)', border: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 12 }}>
+            <div style={{ width: 36, height: 36, background: '#0055b8', border: '1px solid rgba(255,255,255,0.2)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
               <Radio style={{ width: 18, height: 18, color: '#fff' }} />
             </div>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+              <div style={{ fontSize: 14, fontWeight: 800, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
                 {liveStreamInfo?.title || 'Live Stream'}
               </div>
-              <div style={{ fontSize: 11, color: '#64748b', marginTop: 1 }}>
-                {liveStreamInfo?.uploader || 'Streamer'} · Jetzt live
+              <div style={{ fontSize: 11, fontWeight: 600, color: '#64748b', marginTop: 2, textTransform: 'uppercase' }}>
+                {liveStreamInfo?.uploader || 'Streamer'} · JETZT LIVE
               </div>
             </div>
-            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, color: '#94a3b8', flexShrink: 0 }}>
-              <span style={{ width: 8, height: 8, borderRadius: '50%', background: '#22c55e', boxShadow: '0 0 6px #22c55e', display: 'inline-block', animation: 'pulse 2s infinite' }} />
-              Live · {viewerCount} schauen zu
+            <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'center', gap: 6, fontSize: 11, fontWeight: 700, color: '#94a3b8', flexShrink: 0, textTransform: 'uppercase' }}>
+              <span style={{ width: 8, height: 8, background: '#22c55e', display: 'inline-block', animation: 'pulse 2s infinite' }} />
+              LIVE · {viewerCount} SCHAUEN ZU
             </div>
           </div>
         </div>
 
-        {/* Right: Chat Panel (Twitch-style) */}
-        <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 12, overflow: 'hidden', height: 'calc(100% + 52px)', minHeight: 480, maxHeight: 640 }} className="live-chat-panel">
+        {/* Right: Chat Panel */}
+        <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-card)', border: '1px solid var(--border)', overflow: 'hidden', height: 'calc(100% + 52px)', minHeight: 480, maxHeight: 640 }} className="live-chat-panel">
           
           {/* Chat Header */}
           <div style={{ padding: '12px 16px', borderBottom: '1px solid var(--border)', display: 'flex', alignItems: 'center', gap: 8 }}>
             <MessageSquare style={{ width: 15, height: 15, color: '#0055b8' }} />
-            <span style={{ fontSize: 13, fontWeight: 700, color: '#f8fafc' }}>Live Chat</span>
-            <div style={{ marginLeft: 'auto', fontSize: 10, color: '#475569' }}>{comments.length} Nachrichten</div>
+            <span style={{ fontSize: 12, fontWeight: 900, color: '#f8fafc', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Live Chat</span>
+            <div style={{ marginLeft: 'auto', fontSize: 10, fontWeight: 700, color: '#64748b' }}>{comments.length} NACHRICHTEN</div>
           </div>
 
           {/* Messages */}
           <div style={{ flex: 1, overflowY: 'auto', padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
             {comments.map(c => (
-              <div key={c.id} style={{ padding: '5px 8px', borderRadius: 6, background: c.isSystem ? 'rgba(0,85,184,0.08)' : 'rgba(255,255,255,0.03)', fontSize: 13, lineHeight: 1.4 }}>
+              <div key={c.id} style={{ padding: '6px 10px', background: c.isSystem ? 'rgba(0,85,184,0.12)' : 'var(--bg-surface)', border: '1px solid var(--border)', fontSize: 12, lineHeight: 1.4 }}>
                 {c.isSystem ? (
-                  <span style={{ color: '#60a5fa', fontSize: 12 }}>{c.text}</span>
+                  <span style={{ color: '#60a5fa', fontSize: 11, fontWeight: 800, letterSpacing: '0.04em' }}>{c.text}</span>
                 ) : (
                   <>
-                    <span style={{ fontWeight: 700, color: '#60a5fa', marginRight: 6 }}>{c.user}</span>
+                    <span style={{ fontWeight: 800, color: '#0055b8', marginRight: 6, textTransform: 'uppercase' }}>{c.user}</span>
                     <span style={{ color: '#e2e8f0' }}>{c.text}</span>
                   </>
                 )}
@@ -464,20 +443,22 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
           <div style={{ padding: '10px 12px', borderTop: '1px solid var(--border)', display: 'flex', flexDirection: 'column', gap: 8 }}>
             <input
               type="text"
-              placeholder="Dein Name (optional)"
+              placeholder="DEIN NAME (OPTIONAL)"
               value={commentUser}
               onChange={e => setCommentUser(e.target.value)}
-              style={{ width: '100%', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border)', borderRadius: 6, padding: '7px 10px', fontSize: 12, color: '#f8fafc', outline: 'none', boxSizing: 'border-box' }}
+              className="input-search"
+              style={{ width: '100%', padding: '7px 10px', fontSize: 11, textTransform: 'uppercase' }}
             />
             <form onSubmit={handleCommentSubmit} style={{ display: 'flex', gap: 6 }}>
               <input
                 type="text"
-                placeholder="Nachricht senden…"
+                placeholder="NACHRICHT SENDEN…"
                 value={commentText}
                 onChange={e => setCommentText(e.target.value)}
-                style={{ flex: 1, background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border)', borderRadius: 6, padding: '7px 10px', fontSize: 12, color: '#f8fafc', outline: 'none' }}
+                className="input-search"
+                style={{ flex: 1, padding: '7px 10px', fontSize: 12 }}
               />
-              <button type="submit" className="btn-primary" style={{ fontSize: 12, padding: '7px 12px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
+              <button type="submit" className="btn-primary" style={{ fontSize: 11, padding: '7px 12px', flexShrink: 0, display: 'flex', alignItems: 'center', gap: 5 }}>
                 <Send style={{ width: 13, height: 13 }} />
               </button>
             </form>

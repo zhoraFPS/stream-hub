@@ -333,11 +333,14 @@ app.post('/api/videos/:id/like', requireAuth, (req, res) => {
 
 // MediaMTX calls this to validate a stream key before accepting RTMP publish
 app.post('/api/internal/stream-auth', (req, res) => {
-  // MediaMTX sends query params: user=streamkey, action=publish, path=live/STREAMKEY
-  const { user, action, path: streamPath } = req.query;
+  console.log('[StreamAuth Debug] Body:', req.body);
+  console.log('[StreamAuth Debug] Query:', req.query);
 
-  // Also check body (some versions send JSON)
-  const streamKey = user || req.body?.user || streamPath?.split('/')?.pop();
+  const { user, action, path: streamPath } = req.query;
+  const bodyPath = req.body?.path;
+
+  // MediaMTX v1.19+ sends JSON body with 'path' field instead of query params
+  const streamKey = user || req.body?.user || streamPath?.split('/')?.pop() || bodyPath?.split('/')?.pop();
 
   if (!streamKey) return res.status(401).json({ error: 'No stream key provided' });
 
@@ -354,6 +357,11 @@ app.post('/api/internal/stream-auth', (req, res) => {
 // MediaMTX webhook: stream started (via on_publish.sh)
 // The stream key is extracted from the MTX_PATH env var in on_publish.sh
 app.post('/api/internal/obs-start', (req, res) => {
+  console.log('[Webhook Debug] obs-start URL:', req.originalUrl);
+  console.log('[Webhook Debug] obs-start Headers:', req.headers);
+  console.log('[Webhook Debug] obs-start Body:', req.body);
+  console.log('[Webhook Debug] obs-start Query:', req.query);
+
   const streamKey = req.query?.streamKey || req.body?.streamKey || req.query?.user || req.body?.user || req.query?.path?.split('/')?.pop();
 
   if (streamKey) {

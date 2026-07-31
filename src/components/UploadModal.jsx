@@ -1,7 +1,17 @@
 import React, { useState, useRef } from 'react';
 import { X, UploadCloud, Film, Image as ImageIcon, Camera, Loader2, Smartphone } from 'lucide-react';
 
-export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
+// VfL Bochum TV – Kategorien
+const CATEGORIES = [
+  { value: 'Spiele',           label: '⚽ Spiele (Freundschaft / Test)' },
+  { value: 'Interviews',       label: '🎙️ Interviews' },
+  { value: 'Training',         label: '🏃 Training' },
+  { value: 'Highlights',       label: '🌟 Highlights' },
+  { value: 'Hinter_Kulissen',  label: '🎬 Behind the Scenes' },
+  { value: 'News',             label: '📰 News & Berichte' },
+];
+
+export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
   const [videoFile, setVideoFile] = useState(null);
   const [thumbnailFile, setThumbnailFile] = useState(null);
   const [autoThumbnailData, setAutoThumbnailData] = useState(null);
@@ -9,8 +19,8 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('Gaming');
-  const [tags, setTags] = useState('Smartphone Stream');
+  const [category, setCategory] = useState('Spiele');
+  const [tags, setTags] = useState('VfL Bochum');
   const [duration, setDuration] = useState(0);
 
   const [isUploading, setIsUploading] = useState(false);
@@ -31,7 +41,7 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
 
     setVideoFile(file);
     if (!title) {
-      setTitle(file.name.replace(/\.[^/.]+$/, '') || 'Handy Stream Video');
+      setTitle(file.name.replace(/\.[^/.]+$/, '') || 'VfL Bochum Video');
     }
     setIsCapturingThumb(true);
 
@@ -49,54 +59,43 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
     videoEl.onseeked = () => {
       try {
         const canvas = document.createElement('canvas');
-        canvas.width = videoEl.videoWidth || 1280;
-        canvas.height = videoEl.videoHeight || 720;
+        canvas.width = 1280;
+        canvas.height = 720;
         const ctx = canvas.getContext('2d');
         ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
         const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
         setAutoThumbnailData(dataUrl);
-      } catch (err) {
-        console.error('Frame capture failed:', err);
+        URL.revokeObjectURL(videoUrl);
+      } catch {
+        // canvas tainted – ignore
       } finally {
         setIsCapturingThumb(false);
-        URL.revokeObjectURL(videoUrl);
       }
     };
-  };
 
-  const handleDrag = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (e.type === 'dragenter' || e.type === 'dragover') {
-      setDragActive(true);
-    } else if (e.type === 'dragleave') {
-      setDragActive(false);
-    }
+    videoEl.onerror = () => { setIsCapturingThumb(false); URL.revokeObjectURL(videoUrl); };
+    videoEl.load();
   };
 
   const handleDrop = (e) => {
     e.preventDefault();
-    e.stopPropagation();
     setDragActive(false);
-    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      handleVideoSelect(e.dataTransfer.files[0]);
-    }
+    const file = e.dataTransfer.files?.[0];
+    if (file) handleVideoSelect(file);
   };
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleUpload = async () => {
     if (!videoFile) return;
-
     setIsUploading(true);
-    setUploadProgress(15);
+    setUploadProgress(0);
 
     const formData = new FormData();
     formData.append('video', videoFile);
-    formData.append('title', title || 'Handy Stream VOD');
+    formData.append('title', title || videoFile.name);
     formData.append('description', description);
     formData.append('category', category);
     formData.append('tags', tags);
-    formData.append('duration', duration);
+    formData.append('duration', String(duration));
 
     if (thumbnailFile) {
       formData.append('thumbnail', thumbnailFile);
@@ -104,269 +103,181 @@ export default function UploadModal({ isOpen, onClose, onUploadSuccess }) {
       formData.append('customThumbnailData', autoThumbnailData);
     }
 
+    const token = localStorage.getItem('streamhub_token');
+
     try {
-      setUploadProgress(50);
-      const res = await fetch('/api/upload', {
-        method: 'POST',
-        body: formData,
+      await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open('POST', '/api/upload');
+        if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
+        };
+        xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload fehlgeschlagen: ${xhr.statusText}`));
+        xhr.onerror = () => reject(new Error('Netzwerkfehler'));
+        xhr.send(formData);
       });
 
-      setUploadProgress(90);
-
-      if (!res.ok) {
-        const errData = await res.json();
-        throw new Error(errData.error || 'Upload fehlgeschlagen');
-      }
-
-      const newVideo = await res.json();
-      setUploadProgress(100);
-      setTimeout(() => {
-        setIsUploading(false);
-        onUploadSuccess(newVideo);
-        onClose();
-      }, 400);
+      onUploadComplete?.();
+      onClose();
     } catch (err) {
-      alert('Fehler beim Upload: ' + err.message);
+      alert('Upload fehlgeschlagen: ' + err.message);
+    } finally {
       setIsUploading(false);
     }
   };
 
+  const thumbPreview = thumbnailFile
+    ? URL.createObjectURL(thumbnailFile)
+    : autoThumbnailData || null;
+
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-[#07090e] border border-white/15 w-full max-w-xl rounded-xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
-        
+    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.7)', backdropFilter: 'blur(4px)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+      <div style={{ background: 'var(--bg-card)', border: '1px solid var(--border)', borderRadius: 16, width: '100%', maxWidth: 540, maxHeight: '90vh', overflowY: 'auto' }}>
         {/* Header */}
-        <div className="flex items-center justify-between px-5 py-3.5 border-b border-white/10">
-          <div className="flex items-center gap-2">
-            <Film className="w-5 h-5 text-blue-400" />
-            <h2 className="font-bold text-base text-white">Video hochladen</h2>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '18px 20px', borderBottom: '1px solid var(--border)' }}>
+          <div>
+            <h2 style={{ fontSize: 16, fontWeight: 700, color: '#f8fafc' }}>Video hochladen</h2>
+            <p style={{ fontSize: 12, color: '#475569', marginTop: 2 }}>VfL Bochum TV – Inhalte für unsere Fans</p>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 rounded text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-          >
-            <X className="w-5 h-5" />
+          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', padding: 4 }}>
+            <X size={20} />
           </button>
         </div>
 
-        {/* Upload Form */}
-        <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4 text-xs">
-          
-          {/* File Dropzone & Camera Trigger */}
+        <div style={{ padding: 20, display: 'flex', flexDirection: 'column', gap: 16 }}>
+          {/* Drop zone */}
           {!videoFile ? (
-            <div className="space-y-3">
-              <div
-                onDragEnter={handleDrag}
-                onDragLeave={handleDrag}
-                onDragOver={handleDrag}
-                onDrop={handleDrop}
-                onClick={() => videoInputRef.current?.click()}
-                className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all ${
-                  dragActive
-                    ? 'border-blue-500 bg-blue-500/10'
-                    : 'border-white/15 hover:border-white/30 bg-white/[0.02]'
-                }`}
-              >
-                <input
-                  ref={videoInputRef}
-                  type="file"
-                  accept="video/*"
-                  className="hidden"
-                  onChange={(e) => e.target.files?.[0] && handleVideoSelect(e.target.files[0])}
-                />
-                <UploadCloud className="w-10 h-10 mx-auto text-blue-400 mb-2" />
-                <p className="font-bold text-white text-sm">
-                  Datei auswählen oder hierher ziehen
-                </p>
-                <p className="text-gray-400 mt-1">
-                  MP4, WebM, MOV, MKV (bis 10 GB auf NUC SSD)
-                </p>
+            <div
+              onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
+              onDragLeave={() => setDragActive(false)}
+              onDrop={handleDrop}
+              style={{
+                border: `2px dashed ${dragActive ? 'var(--accent)' : 'var(--border)'}`,
+                borderRadius: 12, padding: '36px 20px', textAlign: 'center',
+                background: dragActive ? 'rgba(0,85,184,0.06)' : 'var(--bg-surface)',
+                transition: 'all 0.15s', cursor: 'pointer',
+              }}
+              onClick={() => videoInputRef.current?.click()}
+            >
+              <UploadCloud style={{ width: 36, height: 36, color: 'var(--accent)', margin: '0 auto 12px' }} />
+              <p style={{ fontSize: 14, fontWeight: 600, color: '#f8fafc', marginBottom: 6 }}>Video hier ablegen oder klicken</p>
+              <p style={{ fontSize: 12, color: '#475569' }}>MP4, WebM, MKV, MOV – bis 10 GB</p>
+              <div style={{ display: 'flex', gap: 8, justifyContent: 'center', marginTop: 14 }}>
+                <button type="button" onClick={(e) => { e.stopPropagation(); videoInputRef.current?.click(); }}
+                  className="btn-primary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Film size={14} /> Datei wählen
+                </button>
+                <button type="button" onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }}
+                  className="btn-secondary" style={{ fontSize: 12, display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <Smartphone size={14} /> Kamera / Handy
+                </button>
               </div>
-
-              {/* Mobile Camera Direct Record Option */}
-              <button
-                type="button"
-                onClick={() => cameraInputRef.current?.click()}
-                className="w-full btn-secondary text-xs flex items-center justify-center gap-2 border-dashed border-cyan-500/40 text-cyan-400 bg-cyan-500/5 hover:bg-cyan-500/15"
-              >
-                <Camera className="w-4 h-4 text-cyan-400" />
-                <span>Mit Kamera aufnehmen</span>
-              </button>
-              <input
-                ref={cameraInputRef}
-                type="file"
-                accept="video/*"
-                capture="environment"
-                className="hidden"
-                onChange={(e) => e.target.files?.[0] && handleVideoSelect(e.target.files[0])}
-              />
+              <input ref={videoInputRef} type="file" accept="video/*" style={{ display: 'none' }}
+                onChange={e => handleVideoSelect(e.target.files?.[0])} />
+              <input ref={cameraInputRef} type="file" accept="video/*" capture="environment" style={{ display: 'none' }}
+                onChange={e => handleVideoSelect(e.target.files?.[0])} />
             </div>
           ) : (
-            <div className="p-3 rounded-lg bg-white/[0.03] border border-white/10 flex items-center justify-between">
-              <div className="flex items-center gap-3">
-                <Film className="w-7 h-7 text-blue-400" />
-                <div>
-                  <p className="font-semibold text-white text-xs truncate max-w-[240px]">{videoFile.name}</p>
-                  <p className="text-[10px] text-gray-400 font-mono">
-                    {(videoFile.size / (1024 * 1024)).toFixed(1)} MB
-                  </p>
-                </div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px', background: 'rgba(0,85,184,0.08)', border: '1px solid rgba(0,85,184,0.25)', borderRadius: 10 }}>
+              <Film style={{ width: 20, height: 20, color: 'var(--accent)', flexShrink: 0 }} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 13, fontWeight: 600, color: '#f8fafc', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{videoFile.name}</div>
+                <div style={{ fontSize: 11, color: '#475569', marginTop: 2 }}>{(videoFile.size / (1024 ** 2)).toFixed(1)} MB</div>
               </div>
-              <button
-                type="button"
-                onClick={() => {
-                  setVideoFile(null);
-                  setAutoThumbnailData(null);
-                }}
-                className="text-xs text-red-400 hover:underline"
-              >
-                Ändern
+              <button onClick={() => { setVideoFile(null); setAutoThumbnailData(null); }}
+                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b' }}>
+                <X size={16} />
               </button>
             </div>
           )}
 
-          {/* Thumbnail Preview */}
-          {videoFile && (
-            <div className="space-y-1.5">
-              <label className="font-semibold text-gray-300 block text-xs">
-                Auto-Thumbnail Preview (Sekunde 00:02)
-              </label>
-              <div className="flex gap-3 items-center">
-                <div className="w-32 aspect-video rounded bg-black overflow-hidden border border-white/15 relative">
-                  {isCapturingThumb ? (
-                    <div className="inset-0 flex items-center justify-center text-[10px] text-gray-400 gap-1">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
-                      Snapshot...
-                    </div>
-                  ) : autoThumbnailData ? (
-                    <img src={autoThumbnailData} alt="Snapshot" className="w-full h-full object-cover" />
-                  ) : (
-                    <div className="text-[10px] text-gray-500 p-2 text-center">Thumbnail</div>
-                  )}
-                </div>
-
-                <button
-                  type="button"
-                  onClick={() => thumbInputRef.current?.click()}
-                  className="btn-secondary text-xs flex items-center gap-1.5"
-                >
-                  <ImageIcon className="w-3.5 h-3.5 text-cyan-400" />
-                  Eigenes Bild wählen
+          {/* Thumbnail preview */}
+          {thumbPreview && (
+            <div>
+              <p style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 8, display: 'flex', alignItems: 'center', gap: 6 }}>
+                <ImageIcon size={13} />
+                {isCapturingThumb ? 'Vorschau wird generiert…' : 'Vorschaubild'}
+              </p>
+              <div style={{ position: 'relative', display: 'inline-block' }}>
+                <img src={thumbPreview} alt="Thumbnail" style={{ width: 200, height: 112, objectFit: 'cover', borderRadius: 8, border: '1px solid var(--border)' }} />
+                <button onClick={() => thumbInputRef.current?.click()}
+                  style={{ position: 'absolute', bottom: 6, right: 6, background: 'rgba(0,0,0,0.75)', border: 'none', borderRadius: 6, padding: '4px 8px', fontSize: 11, color: '#fff', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: 4 }}>
+                  <Camera size={12} /> Ändern
                 </button>
-                <input
-                  ref={thumbInputRef}
-                  type="file"
-                  accept="image/*"
-                  className="hidden"
-                  onChange={(e) => {
-                    if (e.target.files?.[0]) {
-                      setThumbnailFile(e.target.files[0]);
-                      setAutoThumbnailData(URL.createObjectURL(e.target.files[0]));
-                    }
-                  }}
-                />
+                <input ref={thumbInputRef} type="file" accept="image/*" style={{ display: 'none' }}
+                  onChange={e => setThumbnailFile(e.target.files?.[0])} />
               </div>
             </div>
           )}
 
-          {/* Fields */}
-          <div className="space-y-3">
-            <div>
-              <label className="font-semibold text-gray-300 block mb-1">VOD Titel</label>
-              <input
-                type="text"
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                placeholder="Video Titel..."
-                className="w-full bg-black/40 border border-white/10 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-              />
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="font-semibold text-gray-300 block mb-1">Kategorie</label>
-                <select
-                  value={category}
-                  onChange={(e) => setCategory(e.target.value)}
-                  className="w-full bg-[#0e121b] border border-white/10 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-                >
-                  <option value="Gaming">Gaming Streams</option>
-                  <option value="Movies">Filme & Clips</option>
-                  <option value="Tutorials">Tutorials & Tech</option>
-                  <option value="Proxmox">Server</option>
-                  <option value="General">Sonstiges</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="font-semibold text-gray-300 block mb-1">Tags</label>
-                <input
-                  type="text"
-                  value={tags}
-                  onChange={(e) => setTags(e.target.value)}
-                  placeholder="z.B. Handy, Live, 4K"
-                  className="w-full bg-black/40 border border-white/10 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="font-semibold text-gray-300 block mb-1">Beschreibung</label>
-              <textarea
-                rows={2}
-                value={description}
-                onChange={(e) => setDescription(e.target.value)}
-                placeholder="Optionale Beschreibung..."
-                className="w-full bg-black/40 border border-white/10 rounded-md px-3 py-2 text-xs text-white outline-none focus:border-blue-500 resize-none"
-              />
-            </div>
+          {/* Title */}
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Titel *</label>
+            <input
+              type="text"
+              value={title}
+              onChange={e => setTitle(e.target.value)}
+              placeholder="z. B. Freundschaftsspiel VfL Bochum vs. Schalke 04"
+              className="input-search"
+              style={{ width: '100%' }}
+            />
           </div>
 
-          {/* Progress Bar */}
+          {/* Description */}
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Beschreibung</label>
+            <textarea
+              value={description}
+              onChange={e => setDescription(e.target.value)}
+              placeholder="Kurze Beschreibung des Videos…"
+              rows={3}
+              className="input-search"
+              style={{ width: '100%', resize: 'vertical', fontFamily: 'inherit', lineHeight: 1.5 }}
+            />
+          </div>
+
+          {/* Category */}
+          <div>
+            <label style={{ display: 'block', fontSize: 12, fontWeight: 600, color: '#94a3b8', marginBottom: 6 }}>Kategorie</label>
+            <select
+              value={category}
+              onChange={e => setCategory(e.target.value)}
+              className="input-search"
+              style={{ width: '100%' }}
+            >
+              {CATEGORIES.map(c => (
+                <option key={c.value} value={c.value}>{c.label}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Upload progress */}
           {isUploading && (
-            <div className="space-y-1">
-              <div className="flex justify-between text-[11px] text-gray-300 font-mono">
-                <span>Wird hochgeladen...</span>
+            <div>
+              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 12, color: '#94a3b8', marginBottom: 6 }}>
+                <span>Hochladen…</span>
                 <span>{uploadProgress}%</span>
               </div>
-              <div className="w-full h-1.5 bg-white/10 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-500 to-cyan-400 transition-all duration-300"
-                  style={{ width: `${uploadProgress}%` }}
-                />
+              <div style={{ height: 6, background: 'var(--bg-surface)', borderRadius: 99 }}>
+                <div style={{ height: '100%', background: 'var(--accent)', borderRadius: 99, width: `${uploadProgress}%`, transition: 'width 0.2s' }} />
               </div>
             </div>
           )}
 
-          {/* Submit */}
-          <div className="flex justify-end gap-2 pt-2">
+          {/* Actions */}
+          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 4 }}>
+            <button onClick={onClose} disabled={isUploading} className="btn-secondary" style={{ fontSize: 13 }}>Abbrechen</button>
             <button
-              type="button"
-              onClick={onClose}
-              className="btn-secondary text-xs"
-              disabled={isUploading}
-            >
-              Abbrechen
-            </button>
-            <button
-              type="submit"
+              onClick={handleUpload}
               disabled={!videoFile || isUploading}
-              className="btn-primary text-xs shadow-md disabled:opacity-50"
+              className="btn-primary"
+              style={{ fontSize: 13, display: 'flex', alignItems: 'center', gap: 6, opacity: (!videoFile || isUploading) ? 0.5 : 1 }}
             >
-              {isUploading ? (
-                <>
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  Übertrage...
-                </>
-              ) : (
-                'Hochladen'
-              )}
+              {isUploading ? <><Loader2 size={14} style={{ animation: 'spin 1s linear infinite' }} /> Wird hochgeladen…</> : <><UploadCloud size={14} /> Hochladen</>}
             </button>
           </div>
-
-        </form>
-
+        </div>
       </div>
     </div>
   );

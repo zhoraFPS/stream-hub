@@ -290,6 +290,7 @@ export default function App() {
       <div style={{ background: 'var(--bg-main)', minHeight: '100vh' }}>
         <Navbar
           search={searchQuery} setSearch={setSearchQuery}
+          selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory}
           onOpenUpload={authToken ? () => setIsUploadOpen(true) : () => setCurrentPage('auth')}
           onOpenQR={() => setIsQROpen(true)}
           systemInfo={systemInfo} isLive={isLiveActive}
@@ -301,10 +302,8 @@ export default function App() {
           onHome={goHome}
         />
 
-        <div style={{ display: 'flex', maxWidth: 1600, margin: '0 auto', paddingTop: '84px' }}>
-          <Sidebar selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory} />
-
-          <main style={{ flex: 1, padding: '16px 20px 48px', minWidth: 0, marginLeft: '248px' }}>
+        <div style={{ maxWidth: 1600, margin: '0 auto', paddingTop: '84px' }}>
+          <main style={{ padding: '16px 20px 48px', width: '100%' }}>
 
             {/* ── LIVE STREAMS SECTION ────────────────────────────────────── */}
             {(liveChannels.length > 0 || activeLive) && (

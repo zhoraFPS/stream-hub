@@ -10,7 +10,6 @@ hlsAllowOrigin: '*'
 # ── HTTP Auth for Stream Keys ──────────────────
 authMethod: http
 authHTTPAddress: http://stream-hub:5000/api/internal/stream-auth
-authHTTPAction: publish
 
 paths:
   all_others:

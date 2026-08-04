@@ -19,7 +19,9 @@ import {
   createVideo, getVideoById, getVideosByUser, getAllVideos, getTaxonomy,
   incrementVideoViews, updateVideo, deleteVideo, startLiveSession, endLiveSession,
   ROLES, roleAtLeast, countUsers, countAdmins, listUsers, setUserRole, deleteUser,
-  videoFilenames
+  videoFilenames,
+  createSchedule, getScheduleById, getUpcomingSchedules, listSchedules,
+  updateSchedule, deleteSchedule, findScheduleForStart
 } from './db.js';
 import { enqueue as enqueueTranscode, resumePending, isFfmpegAvailable, queueState } from './transcode.js';
 import {
@@ -300,7 +302,7 @@ function queueTranscode(video) {
  * schaltet sie dann öffentlich — statt dass ungeprüftes Material sofort auf
  * der Startseite steht.
  */
-function archiveFromFile({ filename, user, startedAt = Date.now(), title }) {
+function archiveFromFile({ filename, user, startedAt = Date.now(), title, schedule }) {
   const vodId = randomUUID();
   const wann = new Date(startedAt).toLocaleDateString('de-DE', {
     day: '2-digit', month: '2-digit', year: 'numeric',
@@ -309,15 +311,26 @@ function archiveFromFile({ filename, user, startedAt = Date.now(), title }) {
   const video = createVideo({
     id: vodId,
     userId: user?.id ?? null,
-    title: title || `Aufzeichnung vom ${wann}`,
-    description: 'Automatischer Mitschnitt einer Live-Übertragung.',
+    // War die Übertragung angekündigt, erbt der Mitschnitt Titel und
+    // Einordnung — sonst hieße jedes Spiel „Aufzeichnung vom …".
+    title: schedule?.title || title || `Aufzeichnung vom ${wann}`,
+    description: schedule?.description || 'Automatischer Mitschnitt einer Live-Übertragung.',
     filename,
     thumbnailUrl: '',
     category: 'Spiele',
     duration: 0,          // ffprobe trägt die echte Länge bei der Aufbereitung nach
     transcodeStatus: transcodingAvailable ? 'pending' : 'skipped',
     visibility: 'internal',
+    team: schedule?.team,
+    competition: schedule?.competition,
+    season: schedule?.season,
+    matchday: schedule?.matchday,
   });
+
+  if (schedule) {
+    updateSchedule(schedule.id, { status: 'done', videoId: vodId });
+    laufendePlanung.delete(schedule.streamKey);
+  }
 
   console.log(`[Aufzeichnung] als Video übernommen: ${video.title}`);
   queueTranscode(video);
@@ -325,16 +338,33 @@ function archiveFromFile({ filename, user, startedAt = Date.now(), title }) {
   return video;
 }
 
+/** streamKey → angekündigte Übertragung, solange sie läuft. */
+const laufendePlanung = new Map();
+
 async function archiveRecording(streamKey, user) {
   try {
     const ergebnis = await stopRecording(streamKey);
-    if (!ergebnis) return;
+    const planung = laufendePlanung.get(streamKey);
+
+    if (!ergebnis) {
+      // Nichts mitgeschnitten — die Ankündigung darf trotzdem nicht auf „live"
+      // stehen bleiben, sonst hängt sie für immer in der Vorschau.
+      if (planung) {
+        updateSchedule(planung.id, { status: 'done' });
+        laufendePlanung.delete(streamKey);
+        publishEvent('schedule', { reason: 'ended', id: planung.id });
+      }
+      return;
+    }
+
     archiveFromFile({
       filename: ergebnis.filename,
       user,
       startedAt: Date.now() - ergebnis.seconds * 1000,
       title: user?.live_title || undefined,
+      schedule: planung ? { ...planung, streamKey } : null,
     });
+    publishEvent('schedule', { reason: 'ended', id: planung?.id });
   } catch (err) {
     console.error(`[Aufzeichnung] ${streamKey}: Übernahme fehlgeschlagen —`, err.message);
   }
@@ -509,6 +539,68 @@ app.post('/api/auth/stream-key/regenerate', requireRole('editor'), (req, res) =>
 app.get('/api/live', (req, res) => {
   const liveChannels = getAllLiveChannels();
   res.json(liveChannels);
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// GEPLANTE ÜBERTRAGUNGEN
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/** Was ansteht — für die Ankündigung auf der Startseite, ohne Anmeldung. */
+app.get('/api/schedule', (req, res) => {
+  res.json(getUpcomingSchedules());
+});
+
+/** Vollständige Liste inklusive Vergangenem — für die Redaktion. */
+app.get('/api/schedule/all', requireRole('editor'), (req, res) => {
+  res.json(listSchedules());
+});
+
+app.post('/api/schedule', requireRole('editor'), (req, res) => {
+  const { title, scheduledFor } = req.body;
+  if (!title?.trim()) return res.status(400).json({ error: 'Ein Titel ist erforderlich' });
+  if (!scheduledFor || Number.isNaN(Date.parse(scheduledFor))) {
+    return res.status(400).json({ error: 'Ein gültiger Zeitpunkt ist erforderlich' });
+  }
+
+  const eintrag = createSchedule({
+    ...req.body,
+    userId: req.userId,
+    scheduledFor: new Date(scheduledFor).toISOString(),
+  });
+  publishEvent('schedule', { reason: 'create', id: eintrag.id });
+  res.status(201).json(eintrag);
+});
+
+app.put('/api/schedule/:id', requireRole('editor'), (req, res) => {
+  const eintrag = getScheduleById(Number(req.params.id));
+  if (!eintrag) return res.status(404).json({ error: 'Übertragung nicht gefunden' });
+  if (eintrag.user_id !== req.userId && !roleAtLeast(req.userRole, 'admin')) {
+    return res.status(403).json({ error: 'Keine Berechtigung' });
+  }
+
+  const { scheduledFor } = req.body;
+  if (scheduledFor && Number.isNaN(Date.parse(scheduledFor))) {
+    return res.status(400).json({ error: 'Ungültiger Zeitpunkt' });
+  }
+
+  const aktualisiert = updateSchedule(eintrag.id, {
+    ...req.body,
+    scheduledFor: scheduledFor ? new Date(scheduledFor).toISOString() : undefined,
+  });
+  publishEvent('schedule', { reason: 'update', id: eintrag.id });
+  res.json(aktualisiert);
+});
+
+app.delete('/api/schedule/:id', requireRole('editor'), (req, res) => {
+  const eintrag = getScheduleById(Number(req.params.id));
+  if (!eintrag) return res.status(404).json({ error: 'Übertragung nicht gefunden' });
+  if (eintrag.user_id !== req.userId && !roleAtLeast(req.userRole, 'admin')) {
+    return res.status(403).json({ error: 'Keine Berechtigung' });
+  }
+
+  deleteSchedule(eintrag.id);
+  publishEvent('schedule', { reason: 'delete', id: eintrag.id });
+  res.json({ success: true });
 });
 
 app.get('/api/channels/:username', optionalAuth, (req, res) => {
@@ -741,7 +833,16 @@ app.post('/api/internal/obs-start', (req, res) => {
   if (streamKey) {
     const user = getUserByStreamKey(streamKey);
     if (user) {
-      const title = req.body?.title || `${user.display_name || user.username}'s Live Stream`;
+      // Gibt es eine Ankündigung um diese Zeit, übernimmt sie den Titel.
+      const planung = findScheduleForStart(user.id);
+      if (planung) {
+        updateSchedule(planung.id, { status: 'live' });
+        laufendePlanung.set(streamKey, planung);
+        publishEvent('schedule', { reason: 'started', id: planung.id });
+        console.log(`[Webhook] Übertragung passt zur Ankündigung: ${planung.title}`);
+      }
+
+      const title = planung?.title || req.body?.title || `${user.display_name || user.username}'s Live Stream`;
       updateUserLiveStatus(user.id, true, title);
       startLiveSession(user.id, title);
       activeLiveStream = {
@@ -768,6 +869,9 @@ app.post('/api/internal/obs-start', (req, res) => {
           user,
           startedAt: Date.now() - ergebnis.seconds * 1000,
           title: user.live_title || undefined,
+          schedule: laufendePlanung.has(streamKey)
+            ? { ...laufendePlanung.get(streamKey), streamKey }
+            : null,
         }),
       });
       publishEvent('live', { active: true, username: user.username });

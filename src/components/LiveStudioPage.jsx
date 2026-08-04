@@ -2,13 +2,14 @@ import React, { useState, useRef, useEffect } from 'react';
 import SectionTitle from './ui/SectionTitle';
 import Chips from './ui/Chips';
 import Icon from './ui/Icon';
+import SchedulePlanner from './SchedulePlanner';
 
 const MODES = [
   { value: 'phone', label: 'Kamera' },
   { value: 'obs',   label: 'OBS Studio' },
 ];
 
-export default function LiveStudioPage({ onBack, currentUser, onStreamStarted, onStreamEnded }) {
+export default function LiveStudioPage({ onBack, currentUser, authToken, onStreamStarted, onStreamEnded }) {
   const [mode, setMode] = useState('phone');
   const [streamTitle, setStreamTitle] = useState('');
   const [isStreaming, setIsStreaming] = useState(false);
@@ -310,6 +311,8 @@ export default function LiveStudioPage({ onBack, currentUser, onStreamStarted, o
           </div>
         )}
       </section>
+
+      <SchedulePlanner authToken={authToken} currentUser={currentUser} />
     </div>
   );
 }

@@ -400,6 +400,17 @@ ul, ol { list-style: none; }
 .b-card-article:hover .b-card-article__delete,
 .b-card-article:focus-within .b-card-article__delete { opacity: 1; }
 
+/* ── Angekündigte Übertragung ──────────────────────────────────────────── */
+
+.b-upcoming {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3xs);
+  padding: var(--space-s);
+  border: 1px solid var(--color-line);
+}
+.b-upcoming__when { color: var(--color-alpha-600); }
+
 /* ── Match-Card ────────────────────────────────────────────────────────── */
 
 .b-card-match__grid {

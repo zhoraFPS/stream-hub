@@ -79,6 +79,28 @@ function initSchema() {
       FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
     );
 
+    -- Geplante Übertragungen. Getrennt von live_sessions: dort steht, was
+    -- tatsächlich lief, hier was vorgesehen ist. Beides kann auseinandergehen —
+    -- ein angekündigtes Spiel fällt aus, ein Stream startet spontan.
+    CREATE TABLE IF NOT EXISTS scheduled_streams (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id       INTEGER NOT NULL,
+      title         TEXT    NOT NULL,
+      description   TEXT    DEFAULT '',
+      scheduled_for TEXT    NOT NULL,
+      team          TEXT    DEFAULT '',
+      competition   TEXT    DEFAULT '',
+      season        TEXT    DEFAULT '',
+      matchday      INTEGER DEFAULT 0,
+      status        TEXT    DEFAULT 'planned',  -- planned | live | done | cancelled
+      video_id      TEXT,
+      created_at    TEXT    NOT NULL DEFAULT (datetime('now')),
+      FOREIGN KEY(user_id) REFERENCES users(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_scheduled_time ON scheduled_streams(scheduled_for);
+    CREATE INDEX IF NOT EXISTS idx_scheduled_status ON scheduled_streams(status);
+
     CREATE INDEX IF NOT EXISTS idx_videos_user ON videos(user_id);
     CREATE INDEX IF NOT EXISTS idx_videos_created ON videos(created_at DESC);
     CREATE INDEX IF NOT EXISTS idx_users_stream_key ON users(stream_key);
@@ -362,6 +384,104 @@ export function setVideoMedia(id, { hlsPath, duration, height, thumbnailUrl }) {
  * Alles, was beim letzten Lauf nicht fertig wurde. 'processing' zählt mit:
  * wer beim Neustart mittendrin war, ist es jetzt nicht mehr.
  */
+// ── Geplante Übertragungen ────────────────────────────────────────────────────
+
+const SCHEDULE_SELECT = `
+  SELECT s.*, u.username, u.display_name,
+         COALESCE(u.display_name, u.username) AS uploader
+  FROM scheduled_streams s LEFT JOIN users u ON s.user_id = u.id
+`;
+
+export function createSchedule({ userId, title, description, scheduledFor, team, competition, season, matchday }) {
+  const result = getDb().prepare(`
+    INSERT INTO scheduled_streams
+      (user_id, title, description, scheduled_for, team, competition, season, matchday)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    userId, title, description || '', scheduledFor,
+    team || '', competition || '', season || '',
+    Number(matchday) || 0
+  );
+  return getScheduleById(result.lastInsertRowid);
+}
+
+export function getScheduleById(id) {
+  return getDb().prepare(`${SCHEDULE_SELECT} WHERE s.id = ?`).get(id);
+}
+
+/**
+ * Was noch aussteht. `graceMinutes` hält eine gerade begonnene Übertragung in
+ * der Liste — sonst verschwände die Ankündigung genau dann, wenn sie zählt.
+ */
+export function getUpcomingSchedules({ graceMinutes = 240, limit = 20 } = {}) {
+  const grenze = new Date(Date.now() - graceMinutes * 60000).toISOString();
+  return getDb().prepare(`
+    ${SCHEDULE_SELECT}
+    WHERE s.status IN ('planned', 'live') AND s.scheduled_for >= ?
+    ORDER BY s.scheduled_for ASC
+    LIMIT ?
+  `).all(grenze, limit);
+}
+
+/** Vollständige Liste für die Redaktion, auch Vergangenes. */
+export function listSchedules({ limit = 100 } = {}) {
+  return getDb().prepare(`${SCHEDULE_SELECT} ORDER BY s.scheduled_for DESC LIMIT ?`).all(limit);
+}
+
+export function updateSchedule(id, felder = {}) {
+  getDb().prepare(`
+    UPDATE scheduled_streams SET
+      title         = COALESCE(?, title),
+      description   = COALESCE(?, description),
+      scheduled_for = COALESCE(?, scheduled_for),
+      team          = COALESCE(?, team),
+      competition   = COALESCE(?, competition),
+      season        = COALESCE(?, season),
+      matchday      = COALESCE(?, matchday),
+      status        = COALESCE(?, status),
+      video_id      = COALESCE(?, video_id)
+    WHERE id = ?
+  `).run(
+    felder.title ?? null,
+    felder.description ?? null,
+    felder.scheduledFor ?? null,
+    felder.team ?? null,
+    felder.competition ?? null,
+    felder.season ?? null,
+    felder.matchday === undefined ? null : Number(felder.matchday) || 0,
+    felder.status ?? null,
+    felder.videoId ?? null,
+    id
+  );
+  return getScheduleById(id);
+}
+
+export function deleteSchedule(id) {
+  return getDb().prepare('DELETE FROM scheduled_streams WHERE id = ?').run(id).changes > 0;
+}
+
+/**
+ * Die Ankündigung zu einer gerade startenden Übertragung finden.
+ *
+ * Gesucht wird die zeitlich nächstgelegene Planung dieses Kontos innerhalb
+ * eines Fensters um jetzt. Dadurch erbt der Mitschnitt Titel und Einordnung,
+ * statt „Aufzeichnung vom 04.08.2026" zu heißen. Ohne Fenster würde eine
+ * Planung von nächster Woche einen spontanen Test heute vereinnahmen.
+ */
+export function findScheduleForStart(userId, { windowHours = 6 } = {}) {
+  const spanne = windowHours * 3600000;
+  const von = new Date(Date.now() - spanne).toISOString();
+  const bis = new Date(Date.now() + spanne).toISOString();
+
+  return getDb().prepare(`
+    SELECT * FROM scheduled_streams
+    WHERE user_id = ? AND status = 'planned'
+      AND scheduled_for BETWEEN ? AND ?
+    ORDER BY ABS(julianday(scheduled_for) - julianday('now')) ASC
+    LIMIT 1
+  `).get(userId, von, bis);
+}
+
 /** Alle belegten Dateinamen — für den Abgleich mit dem, was auf der Platte liegt. */
 export function videoFilenames() {
   return new Set(

@@ -11,8 +11,9 @@ import Footer from './components/Footer';
 import CookieNotice from './components/CookieNotice';
 import { Impressum, Datenschutz, Nutzungsbedingungen } from './components/LegalPages';
 import {
-  CATEGORIES, CATEGORY_FILTERS, categoryLabel, categorySlug, categoryFromSlug,
+  CATEGORIES, CATEGORY_FILTERS, categoryLabel, categorySlug, categoryFromSlug, matchLabel,
 } from './constants/categories';
+import { formatSchedule } from './components/SchedulePlanner';
 
 /** Videos ohne Wettbewerbsangabe landen gesammelt am Ende. */
 const OHNE_WETTBEWERB = 'Weitere Videos';
@@ -58,6 +59,7 @@ export default function App() {
 
   // ── Archiv ──────────────────────────────────────────────────────────────────
   const [taxonomy, setTaxonomy] = useState(null);
+  const [schedule, setSchedule] = useState([]);
   const [archiveSeason, setArchiveSeason] = useState(null);
   const [archiveVideos, setArchiveVideos] = useState([]);
 
@@ -132,6 +134,13 @@ export default function App() {
     } catch {}
   }, [authHeaders]);
 
+  const fetchSchedule = useCallback(async () => {
+    try {
+      const res = await fetch('/api/schedule');
+      if (res.ok) setSchedule(await res.json());
+    } catch {}
+  }, []);
+
   const fetchLiveChannels = useCallback(async () => {
     try {
       const res = await fetch('/api/live');
@@ -158,6 +167,7 @@ export default function App() {
   // Der Live-Status hängt nicht am Filter — einmal beim Start, danach per Ereignis.
   useEffect(() => { fetchLiveChannels(); }, []);
   useEffect(() => { fetchTaxonomy(); }, [fetchTaxonomy]);
+  useEffect(() => { fetchSchedule(); }, [fetchSchedule]);
 
   // Erste vorhandene Saison vorwählen, sobald bekannt ist, welche es gibt.
   useEffect(() => {
@@ -180,10 +190,10 @@ export default function App() {
 
   // Die Abrufer hängen an Route und Anmeldung. Über eine Ref bleibt der
   // Ereignisstrom davon unberührt und verbindet sich nicht bei jedem Wechsel neu.
-  const refreshRef = useRef({ fetchVideos, fetchLiveChannels, fetchTaxonomy });
+  const refreshRef = useRef({ fetchVideos, fetchLiveChannels, fetchTaxonomy, fetchSchedule });
   useEffect(() => {
-    refreshRef.current = { fetchVideos, fetchLiveChannels, fetchTaxonomy };
-  }, [fetchVideos, fetchLiveChannels, fetchTaxonomy]);
+    refreshRef.current = { fetchVideos, fetchLiveChannels, fetchTaxonomy, fetchSchedule };
+  }, [fetchVideos, fetchLiveChannels, fetchTaxonomy, fetchSchedule]);
 
   const [feedConnected, setFeedConnected] = useState(false);
 
@@ -198,6 +208,7 @@ export default function App() {
       refreshRef.current.fetchTaxonomy();
     });
     source.addEventListener('live', () => refreshRef.current.fetchLiveChannels());
+    source.addEventListener('schedule', () => refreshRef.current.fetchSchedule());
 
     return () => { source.close(); setFeedConnected(false); };
   }, []);
@@ -303,6 +314,7 @@ export default function App() {
               liveChannel={featuredLiveChannel}
               liveChannels={liveChannels}
               taxonomy={taxonomy}
+              schedule={schedule}
               archiveSeason={archiveSeason}
               setArchiveSeason={setArchiveSeason}
               archiveGroups={archiveGroups}
@@ -591,7 +603,7 @@ function SearchPage({ term, ...rest }) {
 
 function HomePage({
   videos, loading, error, currentUser, openVideo, handleDeleteVideo,
-  liveChannel, liveChannels, taxonomy, archiveSeason, setArchiveSeason,
+  liveChannel, liveChannels, taxonomy, schedule, archiveSeason, setArchiveSeason,
   archiveGroups, onOpenChannel, onLogin, onCategory, authToken,
 }) {
   const featuredVideo = videos[0];
@@ -633,6 +645,29 @@ function HomePage({
                   video={{ id: ch.id, title: ch.live_title || 'VfL Bochum 1848 — Live', isLive: true, username: ch.username, category: 'Spiele' }}
                   onSelectVideo={() => onOpenChannel(ch.username)}
                 />
+              ))}
+            </div>
+          </Reveal>
+        )}
+
+        {schedule.length > 0 && (
+          <Reveal as="section" className="b-section b-section--compact">
+            <SectionTitle title="Demnächst live" count={schedule.length} />
+            <div className="b-lane">
+              {schedule.map(eintrag => (
+                <article key={eintrag.id} className="b-upcoming">
+                  <div className="b-kicker b-upcoming__when">
+                    {eintrag.status === 'live'
+                      ? <span className="b-badge b-badge--live b-badge--static">Jetzt live</span>
+                      : formatSchedule(eintrag.scheduled_for)}
+                  </div>
+                  <h3 className="b-card-article__title">{eintrag.title}</h3>
+                  <div className="b-meta-line">
+                    {matchLabel(eintrag) && <span className="b-meta-line__item">{matchLabel(eintrag)}</span>}
+                    {eintrag.team && <span className="b-meta-line__item">{eintrag.team}</span>}
+                  </div>
+                  {eintrag.description && <p className="b-copy">{eintrag.description}</p>}
+                </article>
               ))}
             </div>
           </Reveal>

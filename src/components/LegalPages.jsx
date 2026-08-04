@@ -100,10 +100,28 @@ export function Datenschutz() {
         Betrieb (Art. 6 Abs. 1 lit. f DSGVO).
       </p>
       <p>
-        <strong>Es sind keine Dienste Dritter eingebunden.</strong> Schriftarten,
-        Skripte und Videos werden ausschließlich vom eigenen Server ausgeliefert.
-        Es gibt keine Reichweitenmessung, keine Werbenetzwerke und keine
-        eingebetteten Inhalte fremder Anbieter.
+        Schriftarten, Skripte und Videos werden vom eigenen Server ausgeliefert.
+        Es gibt <strong>keine Reichweitenmessung und keine Werbenetzwerke</strong>.
+      </p>
+
+      <h2>Google Cast (Chromecast)</h2>
+      <p>
+        Wer ein Video an einen Chromecast schicken möchte, braucht dafür einen
+        Programmbaustein von Google (<code>gstatic.com</code>). Dabei erfährt
+        Google die IP-Adresse und technische Angaben zum Browser.
+      </p>
+      <p>
+        Dieser Baustein wird <strong>ausschließlich nach ausdrücklicher
+        Zustimmung</strong> geladen (Art. 6 Abs. 1 lit. a DSGVO, § 25 Abs. 1
+        TTDSG). Ohne Zustimmung wird nichts von Google abgerufen — Google
+        erfährt dann nicht einmal, dass diese Seite geöffnet wurde. Der
+        Cast-Knopf bleibt in dem Fall aus; alle Videos lassen sich trotzdem
+        ansehen, auf Apple-Geräten auch per AirPlay, das ohne fremde Dienste
+        auskommt.
+      </p>
+      <p>
+        Die Zustimmung ist jederzeit über „Cookie-Einstellungen" in der Fußzeile
+        widerrufbar — mit derselben Mühe, mit der sie erteilt wurde.
       </p>
 
       <h2>Cookies und lokale Speicherung</h2>
@@ -124,15 +142,15 @@ export function Datenschutz() {
           </tr>
           <tr>
             <td><code>vfl_consent</code></td>
-            <td>Merkt sich, dass der Cookie-Hinweis gelesen wurde.</td>
-            <td>bis zum Löschen</td>
+            <td>Merkt sich deine Datenschutz-Entscheidung.</td>
+            <td>bis zum Widerruf</td>
           </tr>
         </tbody>
       </table>
       <p>
         Alle drei sind technisch notwendig; eine Einwilligung ist dafür nicht
-        erforderlich (§ 25 Abs. 2 TTDSG). Kämen später Reichweitenmessung oder
-        eingebettete Inhalte hinzu, würde vorher gefragt.
+        erforderlich (§ 25 Abs. 2 TTDSG). Alles darüber hinaus — derzeit nur
+        Google Cast — wird vorher abgefragt.
       </p>
 
       <h2>Konten</h2>

@@ -6,6 +6,8 @@ import SectionTitle from './ui/SectionTitle';
 import Icon from './ui/Icon';
 import { formatDate, formatTimeAgo, formatViews } from '../utils/formatters';
 import { categoryLabel } from '../constants/categories';
+import { allows, subscribeConsent } from '../utils/consent';
+import { loadCastSdk, castMedia } from '../utils/cast';
 
 export default function VideoPlayer({
   video, allVideos, onSelectVideo, onBack, onOpenChannel, authToken, currentUser, onVideoUpdated,
@@ -107,7 +109,7 @@ export default function VideoPlayer({
       player = new Plyr(element, {
         autoplay: true,
         controls: ['play-large', 'play', 'progress', 'current-time', 'duration',
-                   'mute', 'volume', 'settings', 'pip', 'fullscreen'],
+                   'mute', 'volume', 'settings', 'pip', 'airplay', 'fullscreen'],
         settings: ['speed'],
         speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
         tooltips: { controls: true, seek: true },
@@ -147,6 +149,52 @@ export default function VideoPlayer({
     }
   };
 
+  // ── Chromecast ──────────────────────────────────────────────────────────────
+  const [castErlaubt, setCastErlaubt] = useState(() => allows('external'));
+  const [castBereit, setCastBereit] = useState(false);
+  const [castFehler, setCastFehler] = useState('');
+
+  /**
+   * Interne Videos lassen sich nicht casten: das Gerät holt sich den Stream
+   * selbst und hat unser Medien-Cookie nicht — der Abruf liefe in ein 403 und
+   * auf dem Fernseher bliebe es schwarz. Lieber gar nicht erst anbieten.
+   */
+  const castMoeglich = castBereit && video.visibility !== 'internal';
+
+  useEffect(() => subscribeConsent(() => setCastErlaubt(allows('external'))), []);
+
+  // Erst nach Zustimmung: vorher wird gar nichts von Google geladen.
+  useEffect(() => {
+    if (!castErlaubt) { setCastBereit(false); return undefined; }
+    let abgebrochen = false;
+    loadCastSdk().then(ok => { if (!abgebrochen) setCastBereit(ok); });
+    return () => { abgebrochen = true; };
+  }, [castErlaubt]);
+
+  const casten = async () => {
+    setCastFehler('');
+    try {
+      // Das Gerät holt sich den Stream selbst — die Adresse muss also absolut
+      // und aus dem Netz erreichbar sein.
+      const quelle = new URL(hlsSrc || progressiveUrl, window.location.origin).href;
+      await castMedia({
+        url: quelle,
+        title: video.title,
+        poster: video.thumbnailUrl ? new URL(video.thumbnailUrl, window.location.origin).href : null,
+      });
+      playerRef.current?.pause?.();
+    } catch (err) {
+      // Abbruch durch die Nutzerin ist kein Fehler, den man anzeigen muss.
+      if (!/cancel/i.test(err?.message || '')) {
+        setCastFehler(
+          window.location.hostname === 'localhost'
+            ? 'Ein Chromecast erreicht „localhost" nicht. Ruf die Seite über die IP-Adresse der NUC auf.'
+            : (err.message || 'Übertragung an den Chromecast fehlgeschlagen.')
+        );
+      }
+    }
+  };
+
   const related = (allVideos || []).filter(v => v.id !== video.id).slice(0, 10);
 
   return (
@@ -165,6 +213,8 @@ export default function VideoPlayer({
                 Fassung vorliegt oder die Originaldatei ausgeliefert wird. */}
             <video ref={videoRef} playsInline controls style={{ width: '100%' }} />
           </div>
+
+          {castFehler && <div className="b-notice b-notice--error">{castFehler}</div>}
 
           {isPreparing && (
             <div className="b-notice b-notice--info">
@@ -218,6 +268,11 @@ export default function VideoPlayer({
                 <button type="button" className="b-button b-button--ghost b-button--s"
                   onClick={handleLike} disabled={liked}>
                   Gefällt mir · {likeCount}
+                </button>
+              )}
+              {castMoeglich && (
+                <button type="button" className="b-button b-button--ghost b-button--s" onClick={casten}>
+                  Auf Fernseher
                 </button>
               )}
               <button type="button" className="b-button b-button--ghost b-button--s" onClick={handleCopyLink}>

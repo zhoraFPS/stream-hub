@@ -1,41 +1,115 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { hasDecided, saveConsent } from '../utils/consent';
+import { CATEGORIES, hasDecided, saveConsent, readConsent, subscribeConsent } from '../utils/consent';
 
 /**
- * Hinweis statt Abfrage.
+ * Einwilligungsbanner.
  *
- * Wir setzen nur technisch notwendige Cookies und laden nichts von fremden
- * Servern — dafür braucht es keine Einwilligung. Ein „Alle akzeptieren"-Knopf
- * neben einem „Ablehnen"-Knopf, bei dem beides zum selben Ergebnis führt, wäre
- * eine Scheinwahl. Sobald tatsächlich Reichweitenmessung dazukommt, wird aus
- * diesem Hinweis über die Kategorien in utils/consent.js eine echte Abfrage.
+ * „Alle akzeptieren" und „Nur notwendige" stehen gleichwertig nebeneinander —
+ * ein hervorgehobener Zustimmen-Knopf neben einem versteckten Ablehnen wäre
+ * keine freie Entscheidung. Vorausgewählt ist nichts, was nicht notwendig ist.
+ *
+ * Der Dialog erscheint außerdem erneut, wenn jemand unten im Fuß auf
+ * „Cookie-Einstellungen" klickt.
  */
 export default function CookieNotice() {
-  const [sichtbar, setSichtbar] = useState(() => !hasDecided());
+  const [offen, setOffen] = useState(() => !hasDecided());
+  const [details, setDetails] = useState(false);
+  const [auswahl, setAuswahl] = useState(() => ({ external: !!readConsent()?.external }));
 
-  if (!sichtbar) return null;
+  // Wird die Entscheidung woanders zurückgesetzt, fragt der Dialog erneut.
+  useEffect(() => subscribeConsent(() => {
+    const stand = readConsent();
+    setOffen(stand === null);
+    setAuswahl({ external: !!stand?.external });
+  }), []);
 
-  const bestaetigen = () => {
-    saveConsent({});
-    setSichtbar(false);
+  if (!offen) return null;
+
+  const entscheiden = (werte) => {
+    saveConsent(werte);
+    setOffen(false);
   };
 
   return (
-    <div className="b-consent" role="dialog" aria-live="polite" aria-label="Hinweis zu Cookies">
+    <div
+      className="b-consent"
+      role="dialog"
+      aria-modal="false"
+      aria-labelledby="consent-titel"
+      aria-describedby="consent-text"
+    >
       <div className="b-consent__inner">
         <div>
-          <div className="b-kicker" style={{ marginBottom: 'var(--space-3xs)' }}>Cookies</div>
-          <p className="b-copy b-copy--front">
-            1848TV nutzt ausschließlich technisch notwendige Cookies — für die Anmeldung und
-            den Zugriff auf interne Videos. Keine Reichweitenmessung, keine Werbenetzwerke,
-            keine Inhalte von fremden Servern.{' '}
+          <div className="b-kicker" id="consent-titel" style={{ marginBottom: 'var(--space-3xs)' }}>
+            Datenschutz
+          </div>
+          <p className="b-copy b-copy--front" id="consent-text">
+            1848TV nutzt technisch notwendige Cookies für Anmeldung und interne Videos.
+            Zusätzlich können externe Dienste eingebunden werden — dafür brauchen wir
+            deine Zustimmung.{' '}
             <Link to="/datenschutz" style={{ textDecoration: 'underline' }}>Mehr im Datenschutz</Link>
           </p>
+
+          <button
+            type="button"
+            className="b-consent__toggle"
+            onClick={() => setDetails(d => !d)}
+            aria-expanded={details}
+          >
+            {details ? 'Details ausblenden' : 'Details anzeigen'}
+          </button>
+
+          {details && (
+            <ul className="b-consent__list">
+              {CATEGORIES.map(kategorie => (
+                <li key={kategorie.key} className="b-consent__item">
+                  <label className="b-consent__label">
+                    <input
+                      type="checkbox"
+                      checked={kategorie.required || !!auswahl[kategorie.key]}
+                      disabled={kategorie.required}
+                      onChange={e => setAuswahl(a => ({ ...a, [kategorie.key]: e.target.checked }))}
+                    />
+                    <span>
+                      <span className="b-kicker">
+                        {kategorie.label}
+                        {kategorie.required && <span style={{ opacity: .5 }}> · immer aktiv</span>}
+                      </span>
+                      <span className="b-copy" style={{ display: 'block' }}>{kategorie.description}</span>
+                    </span>
+                  </label>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-        <button type="button" className="b-button b-button--primary b-button--s" onClick={bestaetigen}>
-          Verstanden
-        </button>
+
+        <div className="b-consent__actions">
+          <button
+            type="button"
+            className="b-button b-button--primary b-button--s"
+            onClick={() => entscheiden({ external: true })}
+          >
+            Alle akzeptieren
+          </button>
+          <button
+            type="button"
+            className="b-button b-button--secondary b-button--s"
+            onClick={() => entscheiden({ external: false })}
+          >
+            Nur notwendige
+          </button>
+          {details && (
+            <button
+              type="button"
+              className="b-button b-button--ghost b-button--s"
+              onClick={() => entscheiden(auswahl)}
+            >
+              Auswahl speichern
+            </button>
+          )}
+        </div>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import React from 'react';
 import { Link } from 'react-router-dom';
 import Icon from './ui/Icon';
 import { SPONSORS } from '../constants/sponsors';
+import { resetConsent } from '../utils/consent';
 
 /**
  * Fußzeile mit den Pflichtangaben.
@@ -75,6 +76,13 @@ export default function Footer() {
                 <Link className="b-footer__link" to={item.to}>{item.label}</Link>
               </li>
             ))}
+            <li>
+              {/* Eine Einwilligung muss sich genauso leicht widerrufen lassen,
+                  wie sie gegeben wurde — der Dialog erscheint danach erneut. */}
+              <button type="button" className="b-footer__link" onClick={resetConsent}>
+                Cookie-Einstellungen
+              </button>
+            </li>
           </ul>
         </nav>
 

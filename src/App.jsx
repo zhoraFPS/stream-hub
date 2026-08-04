@@ -7,6 +7,9 @@ import SectionTitle from './components/ui/SectionTitle';
 import Chips from './components/ui/Chips';
 import Reveal from './components/ui/Reveal';
 import Icon from './components/ui/Icon';
+import Footer from './components/Footer';
+import CookieNotice from './components/CookieNotice';
+import { Impressum, Datenschutz, Nutzungsbedingungen } from './components/LegalPages';
 import {
   CATEGORIES, CATEGORY_FILTERS, categoryLabel, categorySlug, categoryFromSlug,
 } from './constants/categories';
@@ -401,6 +404,10 @@ export default function App() {
           )
         } />
 
+        <Route path="/impressum" element={<Shell nav={navProps} narrow><Impressum /></Shell>} />
+        <Route path="/datenschutz" element={<Shell nav={navProps} narrow><Datenschutz /></Shell>} />
+        <Route path="/nutzungsbedingungen" element={<Shell nav={navProps} narrow><Nutzungsbedingungen /></Shell>} />
+
         <Route path="*" element={
           <Shell nav={navProps}>
             <NotFound onBack={() => navigate('/')} />
@@ -420,6 +427,8 @@ function Shell({ nav, variant, activePage, narrow, modals, children }) {
       {variant === 'overlay' ? children : (
         <div className={`b-page ${narrow ? '' : 'b-page--wide'}`}>{children}</div>
       )}
+      <Footer />
+      <CookieNotice />
       {modals}
     </>
   );

@@ -16,7 +16,7 @@ import {
   getDb, createUser, getUserById, getUserByUsername, getUserByEmail,
   getUserByStreamKey, updateUserLiveStatus, updateUserProfile,
   regenerateStreamKey, getAllLiveChannels, safeUser,
-  createVideo, getVideoById, getVideosByUser, getAllVideos,
+  createVideo, getVideoById, getVideosByUser, getAllVideos, getTaxonomy,
   incrementVideoViews, deleteVideo, startLiveSession, endLiveSession
 } from './db.js';
 import { enqueue as enqueueTranscode, resumePending, isFfmpegAvailable, queueState } from './transcode.js';
@@ -367,14 +367,19 @@ app.get('/api/channels/:username', optionalAuth, (req, res) => {
 // ═══════════════════════════════════════════════════════════════════════════════
 
 app.get('/api/videos', optionalAuth, (req, res) => {
-  const { search, category, limit, offset } = req.query;
+  const { search, category, season, competition, team, limit, offset } = req.query;
   const videos = getAllVideos({
-    search, category,
+    search, category, season, competition, team,
     limit: parseInt(limit) || 50,
     offset: parseInt(offset) || 0,
     includeInternal: !!req.userId,
   });
   res.json(videos);
+});
+
+/** Saisons, Wettbewerbe und Mannschaften, zu denen es wirklich Videos gibt. */
+app.get('/api/taxonomy', optionalAuth, (req, res) => {
+  res.json(getTaxonomy({ includeInternal: !!req.userId }));
 });
 
 app.get('/api/videos/:id', optionalAuth, (req, res) => {
@@ -437,7 +442,10 @@ app.get('/api/videos/:id/stream', optionalAuth, (req, res) => {
 
 app.post('/api/upload', requireAuth, upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]), (req, res) => {
   try {
-    const { title, description, category, duration, customThumbnailData, visibility } = req.body;
+    const {
+      title, description, category, duration, customThumbnailData, visibility,
+      team, competition, season, matchday,
+    } = req.body;
     const videoFile = req.files?.['video']?.[0];
     if (!videoFile) return res.status(400).json({ error: 'Video file is required' });
 
@@ -464,6 +472,7 @@ app.post('/api/upload', requireAuth, upload.fields([{ name: 'video', maxCount: 1
       duration: parseFloat(duration) || 0,
       transcodeStatus: transcodingAvailable ? 'pending' : 'skipped',
       visibility,
+      team, competition, season, matchday,
     });
 
     const user = getUserById(req.userId);

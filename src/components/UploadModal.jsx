@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Icon from './ui/Icon';
-import { CATEGORIES } from '../constants/categories';
+import { CATEGORIES, TEAMS, COMPETITIONS, MAX_MATCHDAY, recentSeasons } from '../constants/categories';
 import { formatBytes } from '../utils/formatters';
 
 export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
@@ -13,6 +13,10 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0].value);
   const [visibility, setVisibility] = useState('public');
+  const [team, setTeam] = useState('');
+  const [competition, setCompetition] = useState('');
+  const [season, setSeason] = useState('');
+  const [matchday, setMatchday] = useState('');
   const [tags, setTags] = useState('VfL Bochum');
   const [duration, setDuration] = useState(0);
 
@@ -92,6 +96,10 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
     formData.append('description', description);
     formData.append('category', category);
     formData.append('visibility', visibility);
+    formData.append('team', team);
+    formData.append('competition', competition);
+    formData.append('season', season);
+    formData.append('matchday', matchday);
     formData.append('tags', tags);
     formData.append('duration', String(duration));
 
@@ -227,6 +235,49 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
               {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
+
+          {/* Einordnung ins Archiv — alles freiwillig. Ein Interview gehört zu
+              keinem Spieltag, ein Trainingslager-Vlog zu keinem Wettbewerb. */}
+          <fieldset style={{ border: 'none', display: 'flex', flexDirection: 'column', gap: 'var(--space-2xs)' }}>
+            <legend className="b-label" style={{ marginBottom: 'var(--space-3xs)' }}>
+              Einordnung <span style={{ textTransform: 'none', opacity: .6 }}>(optional)</span>
+            </legend>
+
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-2xs)' }}>
+              <div className="b-field">
+                <label className="b-label" htmlFor="up-team">Mannschaft</label>
+                <select id="up-team" className="b-input" value={team} onChange={e => setTeam(e.target.value)}>
+                  <option value="">—</option>
+                  {TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
+                </select>
+              </div>
+
+              <div className="b-field">
+                <label className="b-label" htmlFor="up-comp">Wettbewerb</label>
+                <select id="up-comp" className="b-input" value={competition} onChange={e => setCompetition(e.target.value)}>
+                  <option value="">—</option>
+                  {COMPETITIONS.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
+
+              <div className="b-field">
+                <label className="b-label" htmlFor="up-season">Saison</label>
+                <select id="up-season" className="b-input" value={season} onChange={e => setSeason(e.target.value)}>
+                  <option value="">—</option>
+                  {recentSeasons().map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+
+              <div className="b-field">
+                <label className="b-label" htmlFor="up-matchday">Spieltag</label>
+                <input
+                  id="up-matchday" className="b-input" type="number" inputMode="numeric"
+                  min="1" max={MAX_MATCHDAY} placeholder="—"
+                  value={matchday} onChange={e => setMatchday(e.target.value)}
+                />
+              </div>
+            </div>
+          </fieldset>
 
           <div className="b-field">
             <span className="b-label">Sichtbarkeit</span>

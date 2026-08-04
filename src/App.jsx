@@ -8,6 +8,9 @@ import Reveal from './components/ui/Reveal';
 import Icon from './components/ui/Icon';
 import { CATEGORIES, CATEGORY_FILTERS, categoryLabel } from './constants/categories';
 
+/** Videos ohne Wettbewerbsangabe landen gesammelt am Ende. */
+const OHNE_WETTBEWERB = 'Weitere Videos';
+
 /**
  * Alles, was nicht zur Startseite gehört, wird erst beim Aufruf geladen.
  * Der Player zieht Plyr nach, das Live-Bild hls.js, das Netzwerk-Fenster
@@ -51,6 +54,11 @@ export default function App() {
   const [systemInfo, setSystemInfo] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // ── Archiv ──────────────────────────────────────────────────────────────────
+  const [taxonomy, setTaxonomy] = useState(null);
+  const [archiveSeason, setArchiveSeason] = useState(null);
+  const [archiveVideos, setArchiveVideos] = useState([]);
 
   // ── Modale ──────────────────────────────────────────────────────────────────
   const [isUploadOpen, setIsUploadOpen] = useState(false);
@@ -102,6 +110,13 @@ export default function App() {
     }
   }, [selectedCategory, searchTerm, authHeaders]);
 
+  const fetchTaxonomy = useCallback(async () => {
+    try {
+      const res = await fetch('/api/taxonomy', { headers: authHeaders() });
+      if (res.ok) setTaxonomy(await res.json());
+    } catch {}
+  }, [authHeaders]);
+
   const fetchLiveChannels = useCallback(async () => {
     try {
       const res = await fetch('/api/live');
@@ -134,12 +149,33 @@ export default function App() {
   // Der Live-Status hängt nicht am Filter — einmal beim Start, danach per Ereignis.
   useEffect(() => { fetchLiveChannels(); }, []);
 
+  useEffect(() => { fetchTaxonomy(); }, [fetchTaxonomy]);
+
+  // Erste vorhandene Saison vorwählen, sobald bekannt ist, welche es gibt.
+  useEffect(() => {
+    if (archiveSeason || !taxonomy?.seasons?.length) return;
+    setArchiveSeason(taxonomy.seasons[0].value);
+  }, [taxonomy, archiveSeason]);
+
+  useEffect(() => {
+    if (!archiveSeason) { setArchiveVideos([]); return; }
+    let abgebrochen = false;
+    const url = new URL('/api/videos', window.location.origin);
+    url.searchParams.set('season', archiveSeason);
+    url.searchParams.set('limit', '200');
+    fetch(url, { headers: authHeaders() })
+      .then(res => res.ok ? res.json() : [])
+      .then(data => { if (!abgebrochen) setArchiveVideos(data); })
+      .catch(() => {});
+    return () => { abgebrochen = true; };
+  }, [archiveSeason, authHeaders, videos]);
+
   // Die Abrufer hängen an Kategorie und Suchbegriff. Über eine Ref bleibt der
   // Ereignisstrom davon unberührt und verbindet sich nicht bei jedem Tastendruck neu.
-  const refreshRef = useRef({ fetchVideos, fetchLiveChannels });
+  const refreshRef = useRef({ fetchVideos, fetchLiveChannels, fetchTaxonomy });
   useEffect(() => {
-    refreshRef.current = { fetchVideos, fetchLiveChannels };
-  }, [fetchVideos, fetchLiveChannels]);
+    refreshRef.current = { fetchVideos, fetchLiveChannels, fetchTaxonomy };
+  }, [fetchVideos, fetchLiveChannels, fetchTaxonomy]);
 
   const [feedConnected, setFeedConnected] = useState(false);
 
@@ -149,7 +185,10 @@ export default function App() {
     const source = new EventSource('/api/events');
     source.onopen = () => setFeedConnected(true);
     source.onerror = () => setFeedConnected(false); // EventSource verbindet selbst neu
-    source.addEventListener('videos', () => refreshRef.current.fetchVideos(true));
+    source.addEventListener('videos', () => {
+      refreshRef.current.fetchVideos(true);
+      refreshRef.current.fetchTaxonomy();
+    });
     source.addEventListener('live', () => refreshRef.current.fetchLiveChannels());
 
     return () => { source.close(); setFeedConnected(false); };
@@ -253,6 +292,21 @@ export default function App() {
       .map(cat => ({ ...cat, items: videos.filter(v => v.category === cat.value) }))
       .filter(lane => lane.items.length > 0);
   }, [videos, isFiltered]);
+
+  /** Videos der gewählten Saison nach Wettbewerb gebündelt. */
+  const archiveGroups = useMemo(() => {
+    if (!archiveVideos.length) return [];
+    const buckets = new Map();
+    archiveVideos.forEach(video => {
+      const key = video.competition || OHNE_WETTBEWERB;
+      if (!buckets.has(key)) buckets.set(key, []);
+      buckets.get(key).push(video);
+    });
+    // Echte Wettbewerbe zuerst, der Sammelposten ans Ende.
+    return [...buckets.entries()]
+      .sort(([a], [b]) => (a === OHNE_WETTBEWERB) - (b === OHNE_WETTBEWERB) || a.localeCompare(b, 'de'))
+      .map(([competition, items]) => ({ competition, items }));
+  }, [archiveVideos]);
 
   const uncategorised = useMemo(() => {
     if (isFiltered) return [];
@@ -514,6 +568,44 @@ export default function App() {
                 />
               ))}
             </div>
+          </Reveal>
+        )}
+
+        {/* Archiv nach Saison und Wettbewerb */}
+        {!isFiltered && taxonomy?.seasons?.length > 0 && (
+          <Reveal as="section" className="b-section">
+            <SectionTitle title="Archiv">
+              <Chips
+                items={taxonomy.seasons.map(s => ({ value: s.value, label: `${s.value} (${s.count})` }))}
+                value={archiveSeason}
+                onChange={setArchiveSeason}
+              />
+            </SectionTitle>
+
+            {archiveGroups.length === 0 ? (
+              <p className="b-copy">Für diese Saison liegt noch nichts vor.</p>
+            ) : (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-l)' }}>
+                {archiveGroups.map(group => (
+                  <div key={group.competition}>
+                    <div className="b-kicker" style={{ marginBottom: 'var(--space-2xs)' }}>
+                      {group.competition}
+                      <span style={{ opacity: .5 }}> · {group.items.length}</span>
+                    </div>
+                    <div className="b-lane">
+                      {group.items.map(video => (
+                        <VideoCard
+                          key={video.id}
+                          video={toCardVideo(video)}
+                          onSelectVideo={openVideo}
+                          onDeleteVideo={canDelete(video, currentUser) ? handleDeleteVideo : null}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
           </Reveal>
         )}
 

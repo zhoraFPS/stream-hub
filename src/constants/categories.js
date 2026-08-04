@@ -27,3 +27,34 @@ export function categoryLabel(value) {
   if (!value || value === 'General') return 'Sonstiges';
   return CATEGORIES.find(c => c.value === value)?.label || value;
 }
+
+/**
+ * Archiv-Einordnung.
+ *
+ * `category` sagt, *was* ein Video ist (Highlights, Pressekonferenz). Die
+ * Angaben hier sagen, *wozu* es gehört — dieselbe Trennung nutzt vfl1848.tv,
+ * wo die Navigation nach „Bundesliga 2025/26 → 34. Spieltag" gegliedert ist.
+ * Alle Angaben sind freiwillig: ein Interview gehört zu keinem Spieltag.
+ */
+export const TEAMS = ['Profis', 'Frauen', 'U21', 'U19', 'U17'];
+
+export const COMPETITIONS = ['2. Bundesliga', 'Bundesliga', 'DFB-Pokal', 'Testspiel'];
+
+export const MAX_MATCHDAY = 38;
+
+/** Saisonliste rückwärts ab der laufenden. Wechsel ist im Juli. */
+export function recentSeasons(count = 8, now = new Date()) {
+  const startYear = now.getMonth() >= 6 ? now.getFullYear() : now.getFullYear() - 1;
+  return Array.from({ length: count }, (_, i) => {
+    const from = startYear - i;
+    return `${from}/${String((from + 1) % 100).padStart(2, '0')}`;
+  });
+}
+
+/** „2. Bundesliga · 34. Spieltag" — Schreibweise wie auf vfl-bochum.de. */
+export function matchLabel({ competition, matchday, season } = {}) {
+  const parts = [];
+  if (competition) parts.push(season ? `${competition} ${season}` : competition);
+  if (matchday) parts.push(`${matchday}. Spieltag`);
+  return parts.join(' · ');
+}

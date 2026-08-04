@@ -1,7 +1,7 @@
 import React from 'react';
 import Media from './ui/Media';
 import { formatDuration, formatDate } from '../utils/formatters';
-import { categoryLabel } from '../constants/categories';
+import { categoryLabel, matchLabel } from '../constants/categories';
 
 /**
  * Video-Kachel nach dem b-card-article Muster: transparente Fläche,
@@ -14,6 +14,7 @@ export default function VideoCard({ video, onSelectVideo, onDeleteVideo, compact
   const views = video.views ?? 0;
   const isLive = !!video.isLive;
   const isPreparing = video.transcode_status === 'pending' || video.transcode_status === 'processing';
+  const match = matchLabel(video);
 
   return (
     <article className={`b-card-article${compact ? ' b-card-article--compact' : ''}`}>
@@ -51,6 +52,9 @@ export default function VideoCard({ video, onSelectVideo, onDeleteVideo, compact
             <span className="b-meta-line__item">{category}</span>
             {!isLive && !compact && <span className="b-meta-line__item">{views} Aufrufe</span>}
           </div>
+
+          {/* Nur wenn das Video wirklich zu einem Spiel gehört. */}
+          {match && <div className="b-meta-line__item">{match}</div>}
         </div>
       </button>
 

@@ -111,6 +111,19 @@ function migrate() {
   // public = für alle sichtbar, internal = nur für angemeldete Redaktion
   add('visibility', "TEXT DEFAULT 'public'");
 
+  // Einordnung ins Archiv. Alle optional — ein Interview gehört zu keinem
+  // Spieltag, ein Trainingslager-Vlog zu keinem Wettbewerb.
+  add('team', "TEXT DEFAULT ''");         // Profis, Frauen, U19, …
+  add('competition', "TEXT DEFAULT ''");  // 2. Bundesliga, DFB-Pokal, Testspiel
+  add('season', "TEXT DEFAULT ''");       // 2026/27
+  add('matchday', 'INTEGER DEFAULT 0');   // 1–34, 0 = keiner
+
+  db.exec(`
+    CREATE INDEX IF NOT EXISTS idx_videos_season ON videos(season);
+    CREATE INDEX IF NOT EXISTS idx_videos_competition ON videos(competition);
+    CREATE INDEX IF NOT EXISTS idx_videos_team ON videos(team);
+  `);
+
   db.exec('CREATE INDEX IF NOT EXISTS idx_videos_transcode ON videos(transcode_status)');
 
   setupSearchIndex();
@@ -256,14 +269,22 @@ export function safeUser(user) {
 
 // ── Video helpers ─────────────────────────────────────────────────────────────
 
-export function createVideo({ id, userId, title, description, filename, thumbnailUrl, category, duration, transcodeStatus, visibility }) {
+export function createVideo({
+  id, userId, title, description, filename, thumbnailUrl, category, duration,
+  transcodeStatus, visibility, team, competition, season, matchday,
+}) {
   getDb().prepare(`
-    INSERT INTO videos (id, user_id, title, description, filename, thumbnail_url, category, duration, transcode_status, visibility)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO videos (
+      id, user_id, title, description, filename, thumbnail_url, category, duration,
+      transcode_status, visibility, team, competition, season, matchday
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, userId, title, description, filename, thumbnailUrl || '',
     category || 'General', duration || 0, transcodeStatus || 'skipped',
-    visibility === 'internal' ? 'internal' : 'public'
+    visibility === 'internal' ? 'internal' : 'public',
+    team || '', competition || '', season || '',
+    Number.isFinite(Number(matchday)) ? Number(matchday) || 0 : 0
   );
   return getDb().prepare('SELECT * FROM videos WHERE id = ?').get(id);
 }
@@ -319,7 +340,10 @@ export function getVideosByUser(userId, { includeInternal = false } = {}) {
   `).all(userId);
 }
 
-export function getAllVideos({ category, search, limit = 50, offset = 0, forceLike = false, includeInternal = false } = {}) {
+export function getAllVideos({
+  category, search, season, competition, team,
+  limit = 50, offset = 0, forceLike = false, includeInternal = false,
+} = {}) {
   const db = getDb();
   const params = [];
 
@@ -335,6 +359,10 @@ export function getAllVideos({ category, search, limit = 50, offset = 0, forceLi
     where += ' AND videos_fts MATCH ?';
     params.push(match);
     order = 'ORDER BY f.rank, v.created_at DESC';
+  } else if (season || competition) {
+    // Im Archiv zählt der Spieltag, nicht der Uploadzeitpunkt: nachgereichte
+    // Aufzeichnungen sollen nicht vor dem 34. Spieltag stehen.
+    order = 'ORDER BY v.matchday DESC, v.created_at DESC';
   } else if (search) {
     where += ' AND (v.title LIKE ? OR v.description LIKE ?)';
     params.push(`%${search}%`, `%${search}%`);
@@ -344,6 +372,9 @@ export function getAllVideos({ category, search, limit = 50, offset = 0, forceLi
     where += ' AND v.category = ?';
     params.push(category);
   }
+  if (season)      { where += ' AND v.season = ?';      params.push(season); }
+  if (competition) { where += ' AND v.competition = ?'; params.push(competition); }
+  if (team)        { where += ' AND v.team = ?';        params.push(team); }
 
   params.push(limit, offset);
 
@@ -362,8 +393,32 @@ export function getAllVideos({ category, search, limit = 50, offset = 0, forceLi
     if (!match) throw err;
     // Sollte die Eingabe FTS5 doch zerlegen, lieber ein Ergebnis als ein Fehler.
     console.warn('[DB] Volltextsuche fehlgeschlagen, weiche auf LIKE aus:', err.message);
-    return getAllVideos({ category, search, limit, offset, forceLike: true, includeInternal });
+    return getAllVideos({
+      category, search, season, competition, team,
+      limit, offset, forceLike: true, includeInternal,
+    });
   }
+}
+
+/**
+ * Was im Bestand tatsächlich vorkommt — die Oberfläche soll keine leeren
+ * Saisons oder Wettbewerbe anbieten, die noch nie befüllt wurden.
+ */
+export function getTaxonomy({ includeInternal = false } = {}) {
+  const scope = includeInternal ? '' : "AND visibility = 'public'";
+  const distinct = (column) => getDb().prepare(`
+    SELECT ${column} AS value, COUNT(*) AS count
+    FROM videos
+    WHERE ${column} != '' ${scope}
+    GROUP BY ${column}
+    ORDER BY ${column} DESC
+  `).all();
+
+  return {
+    seasons: distinct('season'),
+    competitions: distinct('competition'),
+    teams: distinct('team'),
+  };
 }
 
 export function incrementVideoViews(id) {

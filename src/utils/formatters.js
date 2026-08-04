@@ -43,6 +43,14 @@ export function formatTimeAgo(dateString) {
   return `vor ${years} Jahren`;
 }
 
+/** Datumsformat der Meta-Zeilen auf vfl-bochum.de: 03.08.2026 */
+export function formatDate(dateString) {
+  if (!dateString) return '';
+  const date = new Date(dateString);
+  if (isNaN(date)) return '';
+  return date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit', year: 'numeric' });
+}
+
 export function formatBytes(bytes) {
   if (!bytes || bytes === 0) return '0 B';
   const k = 1024;

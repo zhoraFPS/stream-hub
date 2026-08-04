@@ -1,163 +1,159 @@
 import React, { useState, useRef, useEffect } from 'react';
+import Logo from './ui/Logo';
+import Icon from './ui/Icon';
 
-const categories = [
-  { name: 'All', label: 'ALLE' },
-  { name: 'Gaming', label: 'SPIELE' },
-  { name: 'Movies', label: 'INTERVIEWS' },
-  { name: 'Tutorials', label: 'TRAINING' },
-  { name: 'Highlights', label: 'HIGHLIGHTS' },
-  { name: 'BehindTheScenes', label: 'BEHIND THE SCENES' },
-  { name: 'General', label: 'NEWS' },
-];
-
+/**
+ * Kopfzeile nach dem b-header Muster: Logo links, Uppercase-Navigation,
+ * Aktionen rechts. Auf der Startseite liegt sie transparent über dem Hero
+ * (variant="overlay"), sonst als feste Leiste auf der Fläche.
+ */
 export default function Navbar({
   search, setSearch,
-  selectedCategory, setSelectedCategory,
   onOpenUpload, onOpenQR,
   systemInfo, isLive,
   currentUser, authToken,
   onLogin, onLogout,
-  onOpenChannel, onOpenSettings,
-  onHome,
+  onOpenChannel, onOpenSettings, onOpenStudio,
+  onHome, onOpenLive,
+  variant = 'solid',
+  activePage,
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
   useEffect(() => {
+    if (!menuOpen) return;
     const handleClick = (e) => {
       if (menuRef.current && !menuRef.current.contains(e.target)) setMenuOpen(false);
     };
+    const handleKey = (e) => { if (e.key === 'Escape') setMenuOpen(false); };
     document.addEventListener('mousedown', handleClick);
-    return () => document.removeEventListener('mousedown', handleClick);
-  }, []);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleClick);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [menuOpen]);
+
+  const navItems = [
+    { key: 'home', label: 'Start', onClick: onHome },
+    isLive && { key: 'live', label: 'Live', onClick: onOpenLive },
+    authToken && { key: 'studio', label: 'Studio', onClick: onOpenStudio },
+  ].filter(Boolean);
 
   return (
-    <header className="sticky-nav">
-      <div style={{ width: '100%', padding: '0 16px', display: 'flex', alignItems: 'center', gap: 12, height: '100%' }}>
+    <header className={`b-header${variant === 'solid' ? ' b-header--solid' : ''}`}>
+      <Logo onClick={onHome} />
 
-        {/* Integrated Category Navigation (Replaces Sidebar) */}
-        <nav style={{ display: 'flex', alignItems: 'center', gap: 4, overflowX: 'auto', scrollbarWidth: 'none', flexShrink: 0 }}>
-          {categories.map(cat => (
+      <div className="b-header__bar">
+        <nav className="b-menu__main" aria-label="Hauptnavigation">
+          {navItems.map(item => (
             <button
-              key={cat.name}
-              onClick={() => {
-                if (setSelectedCategory) setSelectedCategory(cat.name);
-                if (onHome) onHome();
-              }}
-              style={{
-                padding: '7px 14px',
-                borderRadius: '9999px',
-                border: 'none',
-                cursor: 'pointer',
-                fontSize: 11,
-                fontWeight: 900,
-                letterSpacing: '0.06em',
-                textTransform: 'uppercase',
-                whiteSpace: 'nowrap',
-                transition: 'all 0.15s ease',
-                background: selectedCategory === cat.name ? '#0055b8' : 'transparent',
-                color: selectedCategory === cat.name ? '#ffffff' : '#94a3b8',
-                boxShadow: selectedCategory === cat.name ? '0 4px 14px rgba(0, 85, 184, 0.5)' : 'none',
-              }}
-              onMouseEnter={e => {
-                if (selectedCategory !== cat.name) e.currentTarget.style.color = '#ffffff';
-              }}
-              onMouseLeave={e => {
-                if (selectedCategory !== cat.name) e.currentTarget.style.color = '#94a3b8';
-              }}
+              key={item.key}
+              type="button"
+              className={`b-menu__main-link${activePage === item.key ? ' --is-active' : ''}`}
+              onClick={item.onClick}
             >
-              {cat.label}
+              {item.label}
+              {item.key === 'live' && (
+                <span className="b-badge b-badge--live b-badge--static" style={{ marginLeft: 'var(--space-3xs)' }}>
+                  Live
+                </span>
+              )}
             </button>
           ))}
         </nav>
 
-        {/* Search */}
         {setSearch && (
-          <div style={{ flex: 1, maxWidth: 300, minWidth: 120 }} className="search-wrap">
+          <label style={{ position: 'relative', flex: 1, maxWidth: 300, minWidth: 0 }}>
+            <span className="b-visually-hidden">Mediathek durchsuchen</span>
             <input
               type="search"
-              placeholder="SUCHEN…"
+              className="b-input"
+              placeholder="Suchen"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              className="input-search"
-              style={{ width: '100%', borderRadius: '9999px', textTransform: 'uppercase', fontSize: 11, letterSpacing: '0.06em', padding: '7px 14px', background: 'rgba(255,255,255,0.06)' }}
+              style={{ paddingLeft: 'var(--space-l)' }}
             />
-          </div>
+            <Icon
+              name="search"
+              size={16}
+              style={{
+                position: 'absolute',
+                left: 'var(--space-2xs)',
+                top: '50%',
+                transform: 'translateY(-50%)',
+                opacity: .5,
+                pointerEvents: 'none',
+              }}
+            />
+          </label>
         )}
+      </div>
 
-        <div style={{ flex: 1 }} />
-
-        {/* Live indicator */}
-        {isLive && (
-          <div className="live-badge" style={{ borderRadius: '9999px', padding: '4px 10px', fontSize: 10 }}>
-            LIVE
-          </div>
-        )}
-
-        {/* Network Info */}
+      <div className="b-header__actions">
         {systemInfo && (
-          <button onClick={onOpenQR} className="btn-secondary"
-            style={{ fontSize: 10, padding: '6px 12px', borderRadius: '9999px' }}>
-            {systemInfo.localIp}
+          <button type="button" onClick={onOpenQR} className="b-button b-button--ghost b-button--s">
+            {systemInfo.localIp || 'Netzwerk'}
           </button>
         )}
 
-        {/* Upload (only logged in) */}
         {authToken && (
-          <button onClick={onOpenUpload} className="btn-primary"
-            style={{ fontSize: 10, padding: '7px 14px', borderRadius: '9999px' }}>
-            HOCHLADEN
+          <button type="button" onClick={onOpenUpload} className="b-button b-button--secondary b-button--s">
+            Hochladen
           </button>
         )}
 
-        {/* User Auth Menu */}
         {currentUser ? (
-          <div ref={menuRef} style={{ position: 'relative' }}>
-            <button onClick={() => setMenuOpen(o => !o)}
-              style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '9999px', padding: '4px 10px', cursor: 'pointer' }}>
-              <div style={{ width: 22, height: 22, borderRadius: '50%', background: '#0055b8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 900, color: '#fff', overflow: 'hidden', flexShrink: 0 }}>
+          <div className="b-usermenu" ref={menuRef}>
+            <button
+              type="button"
+              className="b-usermenu__trigger"
+              onClick={() => setMenuOpen(o => !o)}
+              aria-expanded={menuOpen}
+              aria-haspopup="menu"
+            >
+              <span className="b-avatar">
                 {currentUser.avatar_url
-                  ? <img src={currentUser.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-                  : (currentUser.display_name || currentUser.username || '?')[0].toUpperCase()
-                }
-              </div>
-              <span style={{ fontSize: 11, fontWeight: 800, color: '#ffffff', textTransform: 'uppercase' }}>
+                  ? <img src={currentUser.avatar_url} alt="" />
+                  : (currentUser.display_name || currentUser.username || '?')[0].toUpperCase()}
+              </span>
+              <span className="b-kicker" style={{ fontSize: 'var(--step--2)' }}>
                 {currentUser.display_name || currentUser.username}
               </span>
             </button>
 
-            {/* Dropdown */}
             {menuOpen && (
-              <div style={{ position: 'absolute', right: 0, top: 'calc(100% + 8px)', background: 'var(--bg-card)', padding: 6, minWidth: 180, boxShadow: '0 16px 40px rgba(0,0,0,0.8)', zIndex: 200, borderRadius: '12px' }}>
-                <div style={{ padding: '8px 12px', borderBottom: '1px solid rgba(255,255,255,0.08)', marginBottom: 4 }}>
-                  <div style={{ fontSize: 11, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase' }}>{currentUser.display_name || currentUser.username}</div>
-                  <div style={{ fontSize: 10, color: '#64748b' }}>@{currentUser.username}</div>
+              <div className="b-usermenu__panel" role="menu">
+                <div style={{ padding: 'var(--space-2xs) var(--space-xs)', borderBottom: '1px solid var(--color-line)' }}>
+                  <div className="b-kicker">{currentUser.display_name || currentUser.username}</div>
+                  <div className="b-meta-line__item">@{currentUser.username}</div>
                 </div>
-                <MenuItem label="MEIN KANAL" onClick={() => { setMenuOpen(false); onOpenChannel?.(); }} />
-                <MenuItem label="EINSTELLUNGEN" onClick={() => { setMenuOpen(false); onOpenSettings?.(); }} />
-                <div style={{ borderTop: '1px solid rgba(255,255,255,0.08)', marginTop: 4, paddingTop: 4 }}>
-                  <MenuItem label="ABMELDEN" onClick={() => { setMenuOpen(false); onLogout(); }} danger />
-                </div>
+                <button type="button" role="menuitem" className="b-usermenu__item"
+                  onClick={() => { setMenuOpen(false); onOpenChannel?.(); }}>
+                  Mein Kanal
+                </button>
+                <button type="button" role="menuitem" className="b-usermenu__item"
+                  onClick={() => { setMenuOpen(false); onOpenStudio?.(); }}>
+                  Live-Studio
+                </button>
+                <button type="button" role="menuitem" className="b-usermenu__item"
+                  onClick={() => { setMenuOpen(false); onOpenSettings?.(); }}>
+                  Einstellungen
+                </button>
+                <button type="button" role="menuitem" className="b-usermenu__item b-usermenu__item--danger"
+                  onClick={() => { setMenuOpen(false); onLogout(); }}>
+                  Abmelden
+                </button>
               </div>
             )}
           </div>
         ) : (
-          <button onClick={onLogin} className="btn-primary"
-            style={{ fontSize: 10, padding: '7px 14px', borderRadius: '9999px' }}>
-            ANMELDEN
+          <button type="button" onClick={onLogin} className="b-button b-button--primary b-button--s">
+            Anmelden
           </button>
         )}
       </div>
     </header>
-  );
-}
-
-function MenuItem({ label, onClick, danger }) {
-  return (
-    <button onClick={onClick} style={{ width: '100%', padding: '8px 12px', border: 'none', cursor: 'pointer', background: 'none', textAlign: 'left', fontSize: 11, fontWeight: 800, letterSpacing: '0.06em', color: danger ? '#ef4444' : '#ffffff', transition: 'background 0.1s', borderRadius: '6px' }}
-      onMouseEnter={e => e.currentTarget.style.background = danger ? 'rgba(239,68,68,0.2)' : 'rgba(255,255,255,0.08)'}
-      onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-      {label}
-    </button>
   );
 }

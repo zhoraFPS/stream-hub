@@ -1,13 +1,7 @@
-import React, { useState, useRef } from 'react';
-
-const CATEGORIES = [
-  { value: 'Spiele',           label: 'SPIELE (FREUNDSCHAFT / TEST)' },
-  { value: 'Interviews',       label: 'INTERVIEWS' },
-  { value: 'Training',         label: 'TRAINING' },
-  { value: 'Highlights',       label: 'HIGHLIGHTS' },
-  { value: 'Hinter_Kulissen',  label: 'BEHIND THE SCENES' },
-  { value: 'News',             label: 'NEWS & BERICHTE' },
-];
+import React, { useState, useRef, useEffect } from 'react';
+import Icon from './ui/Icon';
+import { CATEGORIES } from '../constants/categories';
+import { formatBytes } from '../utils/formatters';
 
 export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
   const [videoFile, setVideoFile] = useState(null);
@@ -17,30 +11,36 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
 
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
-  const [category, setCategory] = useState('Spiele');
+  const [category, setCategory] = useState(CATEGORIES[0].value);
   const [tags, setTags] = useState('VfL Bochum');
   const [duration, setDuration] = useState(0);
 
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
   const [dragActive, setDragActive] = useState(false);
+  const [error, setError] = useState('');
 
   const videoInputRef = useRef(null);
   const cameraInputRef = useRef(null);
   const thumbInputRef = useRef(null);
 
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape' && !isUploading) onClose?.(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose, isUploading]);
+
   if (!isOpen) return null;
 
   const handleVideoSelect = (file) => {
-    if (!file || !file.type.startsWith('video/')) {
-      alert('Bitte wähle eine gültige Videodatei (.mp4, .webm, .mkv, .mov).');
+    if (!file) return;
+    if (!file.type.startsWith('video/')) {
+      setError('Das ist keine Videodatei. Erlaubt sind MP4, WebM, MKV und MOV.');
       return;
     }
-
+    setError('');
     setVideoFile(file);
-    if (!title) {
-      setTitle(file.name.replace(/\.[^/.]+$/, '') || 'VfL Bochum Video');
-    }
+    if (!title) setTitle(file.name.replace(/\.[^/.]+$/, ''));
     setIsCapturingThumb(true);
 
     const videoUrl = URL.createObjectURL(file);
@@ -59,13 +59,11 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
         const canvas = document.createElement('canvas');
         canvas.width = 1280;
         canvas.height = 720;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-        setAutoThumbnailData(dataUrl);
+        canvas.getContext('2d').drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+        setAutoThumbnailData(canvas.toDataURL('image/jpeg', 0.85));
         URL.revokeObjectURL(videoUrl);
       } catch {
-        // canvas tainted – ignore
+        // Canvas ist bei manchen Quellen gesperrt — dann ohne Vorschaubild weiter.
       } finally {
         setIsCapturingThumb(false);
       }
@@ -78,14 +76,14 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
   const handleDrop = (e) => {
     e.preventDefault();
     setDragActive(false);
-    const file = e.dataTransfer.files?.[0];
-    if (file) handleVideoSelect(file);
+    handleVideoSelect(e.dataTransfer.files?.[0]);
   };
 
   const handleUpload = async () => {
     if (!videoFile) return;
     setIsUploading(true);
     setUploadProgress(0);
+    setError('');
 
     const formData = new FormData();
     formData.append('video', videoFile);
@@ -95,11 +93,8 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
     formData.append('tags', tags);
     formData.append('duration', String(duration));
 
-    if (thumbnailFile) {
-      formData.append('thumbnail', thumbnailFile);
-    } else if (autoThumbnailData) {
-      formData.append('customThumbnailData', autoThumbnailData);
-    }
+    if (thumbnailFile) formData.append('thumbnail', thumbnailFile);
+    else if (autoThumbnailData) formData.append('customThumbnailData', autoThumbnailData);
 
     const token = localStorage.getItem('streamhub_token');
 
@@ -111,165 +106,148 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
         xhr.upload.onprogress = (e) => {
           if (e.lengthComputable) setUploadProgress(Math.round((e.loaded / e.total) * 100));
         };
-        xhr.onload = () => xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error(`Upload fehlgeschlagen: ${xhr.statusText}`));
-        xhr.onerror = () => reject(new Error('Netzwerkfehler'));
+        xhr.onload = () => (xhr.status >= 200 && xhr.status < 300)
+          ? resolve()
+          : reject(new Error(`Der Server hat den Upload abgelehnt (${xhr.status}).`));
+        xhr.onerror = () => reject(new Error('Die Verbindung ist abgebrochen.'));
         xhr.send(formData);
       });
 
       onUploadComplete?.();
       onClose();
     } catch (err) {
-      alert('Upload fehlgeschlagen: ' + err.message);
+      setError(err.message);
     } finally {
       setIsUploading(false);
     }
   };
 
-  const thumbPreview = thumbnailFile
-    ? URL.createObjectURL(thumbnailFile)
-    : autoThumbnailData || null;
+  const thumbPreview = thumbnailFile ? URL.createObjectURL(thumbnailFile) : autoThumbnailData;
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.85)', zIndex: 1000, display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
-      <div style={{ background: 'var(--bg-card)', width: '100%', maxWidth: 540, maxHeight: '90vh', overflowY: 'auto' }}>
-        {/* Header */}
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 24px', borderBottom: '1px solid rgba(255,255,255,0.08)' }}>
+    <div className="b-modal" role="dialog" aria-modal="true" aria-label="Video hochladen">
+      <div className="b-modal__dialog">
+        <div className="b-modal__header">
           <div>
-            <h2 style={{ fontSize: 16, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.06em' }}>VIDEO HOCHLADEN</h2>
-            <p style={{ fontSize: 11, color: '#64748b', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.05em' }}>VfL Bochum 1848 TV – Media Manager</p>
+            <h2 className="b-heading b-heading--500">Video hochladen</h2>
+            <p className="b-meta-line__item">1848TV Mediathek</p>
           </div>
-          <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: 12, fontWeight: 900 }}>
-            SCHLIESSEN
+          <button type="button" className="b-button b-button--ghost b-button--s"
+            onClick={onClose} disabled={isUploading} aria-label="Schließen">
+            <Icon name="close" size={16} />
           </button>
         </div>
 
-        <div style={{ padding: 24, display: 'flex', flexDirection: 'column', gap: 18 }}>
-          {/* Drop zone */}
+        <div className="b-modal__body">
           {!videoFile ? (
             <div
               onDragOver={(e) => { e.preventDefault(); setDragActive(true); }}
               onDragLeave={() => setDragActive(false)}
               onDrop={handleDrop}
-              style={{
-                border: `2px dashed ${dragActive ? 'var(--accent)' : 'rgba(255,255,255,0.15)'}`,
-                padding: '40px 20px', textAlign: 'center',
-                background: dragActive ? 'rgba(0,85,184,0.1)' : 'rgba(255,255,255,0.03)',
-                transition: 'all 0.15s', cursor: 'pointer',
-              }}
               onClick={() => videoInputRef.current?.click()}
+              style={{
+                border: `1px dashed ${dragActive ? 'var(--color-front)' : 'var(--color-line)'}`,
+                background: dragActive ? 'var(--color-alpha-100)' : 'transparent',
+                padding: 'var(--space-l) var(--space-s)',
+                textAlign: 'center',
+                cursor: 'pointer',
+                transition: 'background-color .2s ease, border-color .2s ease',
+              }}
             >
-              <p style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', marginBottom: 6, textTransform: 'uppercase', letterSpacing: '0.05em' }}>VIDEO HIER ABLEGEN ODER KLICKEN</p>
-              <p style={{ fontSize: 11, color: '#64748b', textTransform: 'uppercase' }}>MP4, WebM, MKV, MOV – bis 10 GB</p>
-              <div style={{ display: 'flex', gap: 10, justifyContent: 'center', marginTop: 16 }}>
-                <button type="button" onClick={(e) => { e.stopPropagation(); videoInputRef.current?.click(); }}
-                  className="btn-primary" style={{ fontSize: 11 }}>
-                  DATEI WÄHLEN
+              <p className="b-heading b-heading--200">Datei hierher ziehen</p>
+              <p className="b-meta-line__item" style={{ display: 'block', marginBlock: 'var(--space-3xs) var(--space-s)' }}>
+                MP4, WebM, MKV, MOV — bis 10 GB
+              </p>
+              <div className="b-row" style={{ justifyContent: 'center' }}>
+                <button type="button" className="b-button b-button--primary b-button--s"
+                  onClick={(e) => { e.stopPropagation(); videoInputRef.current?.click(); }}>
+                  Datei wählen
                 </button>
-                <button type="button" onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }}
-                  className="btn-secondary" style={{ fontSize: 11 }}>
-                  KAMERA / HANDY
+                <button type="button" className="b-button b-button--secondary b-button--s"
+                  onClick={(e) => { e.stopPropagation(); cameraInputRef.current?.click(); }}>
+                  Mit Kamera aufnehmen
                 </button>
               </div>
-              <input ref={videoInputRef} type="file" accept="video/*" style={{ display: 'none' }}
+              <input ref={videoInputRef} type="file" accept="video/*" hidden
                 onChange={e => handleVideoSelect(e.target.files?.[0])} />
-              <input ref={cameraInputRef} type="file" accept="video/*" capture="environment" style={{ display: 'none' }}
+              <input ref={cameraInputRef} type="file" accept="video/*" capture="environment" hidden
                 onChange={e => handleVideoSelect(e.target.files?.[0])} />
             </div>
           ) : (
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '14px 16px', background: 'rgba(0,85,184,0.15)' }}>
+            <div className="b-panel b-panel--bare" style={{ display: 'flex', alignItems: 'center', gap: 'var(--space-s)' }}>
               <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 13, fontWeight: 800, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>{videoFile.name}</div>
-                <div style={{ fontSize: 11, color: '#94a3b8', marginTop: 2 }}>{(videoFile.size / (1024 ** 2)).toFixed(1)} MB</div>
+                <div className="b-heading b-heading--200 b-truncate b-truncate--1">{videoFile.name}</div>
+                <span className="b-meta-line__item">{formatBytes(videoFile.size)}</span>
               </div>
-              <button onClick={() => { setVideoFile(null); setAutoThumbnailData(null); }}
-                style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#ef4444', fontSize: 11, fontWeight: 900 }}>
-                ENTFERNEN
+              <button type="button" className="b-button b-button--ghost b-button--s"
+                onClick={() => { setVideoFile(null); setAutoThumbnailData(null); setThumbnailFile(null); }}
+                disabled={isUploading}>
+                Entfernen
               </button>
             </div>
           )}
 
-          {/* Thumbnail preview */}
           {thumbPreview && (
-            <div>
-              <p style={{ fontSize: 11, fontWeight: 900, color: '#64748b', marginBottom: 8, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                {isCapturingThumb ? 'VORSCHAU WIRD GENERIERT...' : 'VORSCHAUBILD'}
-              </p>
-              <div style={{ position: 'relative', display: 'inline-block' }}>
-                <img src={thumbPreview} alt="Thumbnail" style={{ width: 200, height: 112, objectFit: 'cover' }} />
-                <button onClick={() => thumbInputRef.current?.click()}
-                  style={{ position: 'absolute', bottom: 6, right: 6, background: '#000', border: 'none', padding: '4px 8px', fontSize: 10, fontWeight: 900, color: '#ffffff', cursor: 'pointer', textTransform: 'uppercase' }}>
-                  ÄNDERN
+            <div className="b-field">
+              <span className="b-label">
+                {isCapturingThumb ? 'Vorschaubild wird erzeugt' : 'Vorschaubild'}
+              </span>
+              <div style={{ position: 'relative', width: 220 }}>
+                <img src={thumbPreview} alt="" style={{ width: '100%', aspectRatio: '16 / 9', objectFit: 'cover' }} />
+                <button type="button" className="b-button b-button--ghost b-button--s"
+                  style={{ position: 'absolute', bottom: 0, right: 0 }}
+                  onClick={() => thumbInputRef.current?.click()}>
+                  Ändern
                 </button>
-                <input ref={thumbInputRef} type="file" accept="image/*" style={{ display: 'none' }}
+                <input ref={thumbInputRef} type="file" accept="image/*" hidden
                   onChange={e => setThumbnailFile(e.target.files?.[0])} />
               </div>
             </div>
           )}
 
-          {/* Title */}
-          <div>
-            <label style={labelStyle}>TITEL *</label>
-            <input
-              type="text"
-              value={title}
+          <div className="b-field">
+            <label className="b-label" htmlFor="up-title">Titel</label>
+            <input id="up-title" className="b-input" type="text" value={title}
               onChange={e => setTitle(e.target.value)}
-              placeholder="z. B. FREUNDSCHAFTSSPIEL VFL BOCHUM VS. SCHALKE 04"
-              className="input-search"
-              style={{ width: '100%' }}
-            />
+              placeholder="Testspiel VfL Bochum 1848 gegen Swansea City" />
           </div>
 
-          {/* Description */}
-          <div>
-            <label style={labelStyle}>BESCHREIBUNG</label>
-            <textarea
-              value={description}
+          <div className="b-field">
+            <label className="b-label" htmlFor="up-desc">Beschreibung</label>
+            <textarea id="up-desc" className="b-input" rows={3} value={description}
               onChange={e => setDescription(e.target.value)}
-              placeholder="Kurze Beschreibung des Videos…"
-              rows={3}
-              className="input-search"
-              style={{ width: '100%', resize: 'vertical', lineHeight: 1.5 }}
-            />
+              placeholder="Worum geht es in diesem Video?" />
           </div>
 
-          {/* Category */}
-          <div>
-            <label style={labelStyle}>KATEGORIE</label>
-            <select
-              value={category}
-              onChange={e => setCategory(e.target.value)}
-              className="input-search"
-              style={{ width: '100%' }}
-            >
-              {CATEGORIES.map(c => (
-                <option key={c.value} value={c.value}>{c.label}</option>
-              ))}
+          <div className="b-field">
+            <label className="b-label" htmlFor="up-cat">Kategorie</label>
+            <select id="up-cat" className="b-input" value={category} onChange={e => setCategory(e.target.value)}>
+              {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
           </div>
 
-          {/* Upload progress */}
           {isUploading && (
-            <div>
-              <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 11, fontWeight: 900, color: '#94a3b8', marginBottom: 6, textTransform: 'uppercase' }}>
-                <span>HOCHLADEN…</span>
-                <span>{uploadProgress}%</span>
+            <div className="b-field">
+              <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span className="b-label">Wird hochgeladen</span>
+                <span className="b-label">{uploadProgress}%</span>
               </div>
-              <div style={{ height: 4, background: 'rgba(255,255,255,0.1)' }}>
-                <div style={{ height: '100%', background: 'var(--accent)', width: `${uploadProgress}%`, transition: 'width 0.2s' }} />
+              <div className="b-progress">
+                <div className="b-progress__bar" style={{ width: `${uploadProgress}%` }} />
               </div>
             </div>
           )}
 
-          {/* Actions */}
-          <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end', paddingTop: 6 }}>
-            <button onClick={onClose} disabled={isUploading} className="btn-secondary" style={{ fontSize: 11 }}>ABBRECHEN</button>
-            <button
-              onClick={handleUpload}
-              disabled={!videoFile || isUploading}
-              className="btn-primary"
-              style={{ fontSize: 11, opacity: (!videoFile || isUploading) ? 0.5 : 1 }}
-            >
-              {isUploading ? 'WIRD HOCHGELADEN...' : 'HOCHLADEN'}
+          {error && <div className="b-notice b-notice--error">{error}</div>}
+
+          <div className="b-row" style={{ justifyContent: 'flex-end' }}>
+            <button type="button" className="b-button b-button--secondary b-button--s"
+              onClick={onClose} disabled={isUploading}>
+              Abbrechen
+            </button>
+            <button type="button" className="b-button b-button--primary b-button--s"
+              onClick={handleUpload} disabled={!videoFile || isUploading}>
+              {isUploading ? 'Wird hochgeladen…' : 'Veröffentlichen'}
             </button>
           </div>
         </div>
@@ -277,13 +255,3 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
     </div>
   );
 }
-
-const labelStyle = {
-  display: 'block',
-  fontSize: 11,
-  fontWeight: 800,
-  color: '#64748b',
-  marginBottom: 6,
-  textTransform: 'uppercase',
-  letterSpacing: '0.06em',
-};

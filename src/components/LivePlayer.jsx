@@ -1,7 +1,8 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Hls from 'hls.js';
+import Icon from './ui/Icon';
 
-// ─── HLS Player for OBS Streams ──────────────────────────────────────────────
+// ─── HLS-Player für OBS-Streams ──────────────────────────────────────────────
 function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
   const videoRef = useRef(null);
   const hlsRef = useRef(null);
@@ -56,15 +57,9 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
       hls.on(Hls.Events.ERROR, (_, data) => {
         if (data.fatal) {
           switch (data.type) {
-            case Hls.ErrorTypes.NETWORK_ERROR:
-              hls.startLoad();
-              break;
-            case Hls.ErrorTypes.MEDIA_ERROR:
-              hls.recoverMediaError();
-              break;
-            default:
-              hls.destroy();
-              break;
+            case Hls.ErrorTypes.NETWORK_ERROR: hls.startLoad(); break;
+            case Hls.ErrorTypes.MEDIA_ERROR:   hls.recoverMediaError(); break;
+            default: hls.destroy(); break;
           }
         }
       });
@@ -92,13 +87,8 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
     }
   }, [hlsUrl]);
 
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.muted = isMuted;
-  }, [isMuted]);
-
-  useEffect(() => {
-    if (videoRef.current) videoRef.current.volume = volume;
-  }, [volume]);
+  useEffect(() => { if (videoRef.current) videoRef.current.muted = isMuted; }, [isMuted]);
+  useEffect(() => { if (videoRef.current) videoRef.current.volume = volume; }, [volume]);
 
   const showControlsTemporarily = useCallback(() => {
     setShowControls(true);
@@ -131,90 +121,115 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
     }
   };
 
+  const jumpToEdge = () => {
+    if (hlsRef.current) hlsRef.current.currentLevel = hlsRef.current.levels.length - 1;
+    const v = videoRef.current;
+    if (v?.buffered.length) v.currentTime = v.buffered.end(v.buffered.length - 1) - 0.5;
+  };
+
+  const overlay = { opacity: showControls ? 1 : 0, transition: 'opacity .3s ease' };
+
   return (
     <div
       ref={containerRef}
       onMouseMove={showControlsTemporarily}
-      onMouseLeave={() => { clearTimeout(hideTimer.current); setShowControls(false); }}
       onMouseEnter={showControlsTemporarily}
-      style={{ position: 'relative', background: '#000', overflow: 'hidden', aspectRatio: isFullscreen ? 'unset' : '16/9', height: isFullscreen ? '100vh' : undefined, cursor: showControls ? 'default' : 'none' }}
+      onMouseLeave={() => { clearTimeout(hideTimer.current); setShowControls(false); }}
+      className="b-stage"
+      style={{
+        position: 'relative',
+        aspectRatio: isFullscreen ? 'unset' : '16 / 9',
+        height: isFullscreen ? '100vh' : undefined,
+        cursor: showControls ? 'default' : 'none',
+      }}
     >
       <video
         ref={videoRef}
         playsInline
-        style={{ width: '100%', height: '100%', objectFit: 'contain', display: 'block' }}
+        style={{ width: '100%', height: '100%', objectFit: 'contain' }}
         onWaiting={() => setIsBuffering(true)}
         onPlaying={() => { setIsBuffering(false); setIsPlaying(true); }}
       />
 
-      {/* Buffering Spinner */}
       {isBuffering && (
-        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', background: 'rgba(0,0,0,0.6)', gap: 12 }}>
-          <div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.2)', borderTop: '3px solid #0055b8', animation: 'spin 0.8s linear infinite' }} />
-          <span style={{ color: '#94a3b8', fontSize: 11, fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.08em' }}>STREAM WIRD GELADEN…</span>
+        <div style={{
+          position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
+          alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2xs)',
+          background: 'rgba(4, 24, 37, .7)',
+        }}>
+          <div className="b-spinner" />
+          <span className="b-kicker">Stream wird geladen</span>
         </div>
       )}
 
-      {/* Gradient overlay */}
-      <div style={{ position: 'absolute', inset: 0, background: 'linear-gradient(to top, rgba(0,0,0,0.85) 0%, transparent 40%, transparent 70%, rgba(0,0,0,0.5) 100%)', pointerEvents: 'none', opacity: showControls ? 1 : 0, transition: 'opacity 0.3s ease' }} />
+      <div style={{
+        position: 'absolute', inset: 0, pointerEvents: 'none',
+        background: 'linear-gradient(to top, rgba(4,24,37,.85) 0%, transparent 38%, transparent 72%, rgba(4,24,37,.6) 100%)',
+        ...overlay,
+      }} />
 
-      {/* Top Bar */}
-      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, padding: '16px 20px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', opacity: showControls ? 1 : 0, transition: 'opacity 0.3s ease', pointerEvents: showControls ? 'auto' : 'none' }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-          <div className="live-badge">
-            LIVE
-          </div>
-          {latency && (
-            <div style={{ background: '#000', padding: '4px 8px', fontSize: 10, color: '#94a3b8', fontWeight: 900, letterSpacing: '0.06em' }}>
-              LATENZ {latency}S
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Center Play/Pause on click */}
-      <div onClick={handlePlay} style={{ position: 'absolute', inset: 0, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        {!isPlaying && !isBuffering && (
-          <div style={{ background: '#0055b8', padding: '14px 28px', color: '#fff', fontWeight: 900, fontSize: 13, letterSpacing: '0.08em' }}>
-            STREAM ABSPIELEN
-          </div>
+      <div style={{
+        position: 'absolute', top: 0, left: 0, right: 0,
+        padding: 'var(--space-2xs)', display: 'flex', gap: 'var(--space-3xs)',
+        pointerEvents: 'none', ...overlay,
+      }}>
+        <span className="b-badge b-badge--live b-badge--static">Live</span>
+        {latency != null && (
+          <span className="b-badge b-badge--static" style={{ background: 'var(--color-surface)' }}>
+            Latenz {latency}s
+          </span>
         )}
       </div>
 
-      {/* Bottom Controls */}
-      <div style={{ position: 'absolute', bottom: 0, left: 0, right: 0, padding: '16px 20px', display: 'flex', alignItems: 'center', gap: 16, opacity: showControls ? 1 : 0, transition: 'opacity 0.3s ease', pointerEvents: showControls ? 'auto' : 'none' }}>
-        
-        <button onClick={handlePlay} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: 11, fontWeight: 900, letterSpacing: '0.06em' }}>
-          {isPlaying ? 'PAUSE' : 'PLAY'}
+      <button
+        type="button"
+        onClick={handlePlay}
+        aria-label={isPlaying ? 'Pause' : 'Abspielen'}
+        style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+      >
+        {!isPlaying && !isBuffering && (
+          <span className="b-button b-button--primary">
+            <Icon name="play" size={18} />
+            Stream abspielen
+          </span>
+        )}
+      </button>
+
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0,
+        padding: 'var(--space-2xs)', display: 'flex', alignItems: 'center',
+        gap: 'var(--space-2xs)', flexWrap: 'wrap',
+        pointerEvents: showControls ? 'auto' : 'none', ...overlay,
+      }}>
+        <button type="button" className="b-button b-button--ghost b-button--s" onClick={handlePlay}>
+          {isPlaying ? 'Pause' : 'Abspielen'}
         </button>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <button onClick={() => setIsMuted(!isMuted)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: 11, fontWeight: 900, letterSpacing: '0.06em' }}>
-            {isMuted || volume === 0 ? 'TON AN' : 'TON AUS'}
-          </button>
-          <input
-            type="range" min="0" max="1" step="0.05" value={isMuted ? 0 : volume}
-            onChange={e => { setVolume(parseFloat(e.target.value)); setIsMuted(parseFloat(e.target.value) === 0); }}
-            style={{ width: 80, height: 3, accentColor: '#0055b8', cursor: 'pointer' }}
-          />
-        </div>
-
-        <button
-          onClick={() => { if (hlsRef.current) hlsRef.current.currentLevel = hlsRef.current.levels.length - 1; if (videoRef.current) { const buf = videoRef.current.buffered; if (buf.length) videoRef.current.currentTime = buf.end(buf.length - 1) - 0.5; } }}
-          style={{ marginLeft: 'auto', background: '#dc2626', border: 'none', cursor: 'pointer', padding: '5px 12px', fontSize: 10, fontWeight: 900, color: '#fff', letterSpacing: '0.08em', textTransform: 'uppercase' }}
-        >
-          ZUM LIVE-EDGE
+        <button type="button" className="b-button b-button--ghost b-button--s" onClick={() => setIsMuted(!isMuted)}>
+          {isMuted || volume === 0 ? 'Ton an' : 'Ton aus'}
         </button>
 
-        <button onClick={toggleFullscreen} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#fff', fontSize: 11, fontWeight: 900, letterSpacing: '0.06em' }}>
-          {isFullscreen ? 'VOLLBILD BEENDEN' : 'VOLLBILD'}
+        <input
+          type="range" min="0" max="1" step="0.05" value={isMuted ? 0 : volume}
+          aria-label="Lautstärke"
+          onChange={e => { setVolume(parseFloat(e.target.value)); setIsMuted(parseFloat(e.target.value) === 0); }}
+          style={{ width: 96, accentColor: 'var(--color-front)' }}
+        />
+
+        <button type="button" className="b-button b-button--danger b-button--s"
+          style={{ marginLeft: 'auto' }} onClick={jumpToEdge}>
+          Zum Live-Punkt
+        </button>
+
+        <button type="button" className="b-button b-button--ghost b-button--s" onClick={toggleFullscreen}>
+          {isFullscreen ? 'Vollbild beenden' : 'Vollbild'}
         </button>
       </div>
     </div>
   );
 }
 
-// ─── Main LivePlayer Component ────────────────────────────────────────────────
+// ─── LivePlayer ───────────────────────────────────────────────────────────────
 export default function LivePlayer({ liveStreamInfo, onBack }) {
   const videoRef = useRef(null);
   const mediaSourceRef = useRef(null);
@@ -227,7 +242,7 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
   const [isMuted, setIsMuted] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [comments, setComments] = useState([
-    { id: 'sys-1', user: 'SYSTEM', text: 'STREAM GESTARTET — WILLKOMMEN!', isSystem: true }
+    { id: 'sys-1', user: 'System', text: 'Stream gestartet. Willkommen!', isSystem: true },
   ]);
   const [commentText, setCommentText] = useState('');
   const [commentUser, setCommentUser] = useState('');
@@ -315,7 +330,7 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
   const handleCommentSubmit = (e) => {
     e.preventDefault();
     if (!commentText.trim()) return;
-    const user = commentUser.trim() || 'ZUSCHAUER';
+    const user = commentUser.trim() || 'Zuschauer';
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ type: 'chat', user, text: commentText.trim() }));
     } else {
@@ -324,127 +339,112 @@ export default function LivePlayer({ liveStreamInfo, onBack }) {
     setCommentText('');
   };
 
+  const title = liveStreamInfo?.title || 'Live';
+
   return (
-    <div style={{ maxWidth: 1600, margin: '0 auto', padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 16 }}>
-      
-      {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+    <div className="b-section">
+      <div className="b-row" style={{ paddingBlockEnd: 'var(--space-s)' }}>
         {onBack && (
-          <button onClick={onBack} className="btn-secondary" style={{ fontSize: 11, flexShrink: 0 }}>
-            ← ZURÜCK
+          <button type="button" className="b-button b-button--secondary b-button--s" onClick={onBack}>
+            <Icon name="arrow-left" size={16} />
+            Zurück
           </button>
         )}
-        <h1 style={{ fontSize: 16, fontWeight: 900, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-          {liveStreamInfo?.title || 'Live Stream'}
-        </h1>
-        <div style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: '#94a3b8', flexShrink: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-          {viewerCount} ZUSCHAUER
-        </div>
+        <span className="b-badge b-badge--live b-badge--static">Live</span>
+        <span className="b-spacer" />
+        <span className="b-meta-line__item">{viewerCount} schauen zu</span>
       </div>
 
-      {/* Main Layout: Player + Chat */}
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 340px', gap: 16, alignItems: 'start' }} className="live-layout-grid">
-
-        {/* Left: Video + Info */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, minWidth: 0 }}>
-          
+      <div className="b-watch">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-s)', minWidth: 0 }}>
           {isObs ? (
             <HLSPlayer
               hlsUrl={hlsUrl}
-              isMuted={isMuted}
-              setIsMuted={setIsMuted}
-              isPlaying={isPlaying}
-              setIsPlaying={setIsPlaying}
+              isMuted={isMuted} setIsMuted={setIsMuted}
+              isPlaying={isPlaying} setIsPlaying={setIsPlaying}
             />
           ) : (
-            <div style={{ position: 'relative', background: '#000', overflow: 'hidden', aspectRatio: '16/9' }}>
-              <video ref={videoRef} autoPlay playsInline muted={isMuted} style={{ width: '100%', height: '100%', objectFit: 'contain' }} onPlaying={() => setIsPlaying(true)} />
+            <div className="b-stage" style={{ position: 'relative', aspectRatio: '16 / 9' }}>
+              <video ref={videoRef} autoPlay playsInline muted={isMuted}
+                style={{ width: '100%', height: '100%', objectFit: 'contain' }}
+                onPlaying={() => setIsPlaying(true)} />
               {!isPlaying && (
-                <button onClick={() => videoRef.current?.play().then(() => setIsPlaying(true)).catch(() => {})}
-                  style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.75)', border: 'none', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                  <div style={{ background: '#0055b8', padding: '14px 28px', color: '#fff', fontWeight: 900, fontSize: 13, letterSpacing: '0.08em' }}>
-                    STREAM ABSPIELEN
-                  </div>
+                <button
+                  type="button"
+                  onClick={() => videoRef.current?.play().then(() => setIsPlaying(true)).catch(() => {})}
+                  style={{
+                    position: 'absolute', inset: 0, background: 'rgba(4,24,37,.75)',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  }}
+                >
+                  <span className="b-button b-button--primary">
+                    <Icon name="play" size={18} />
+                    Stream abspielen
+                  </span>
                 </button>
               )}
-              <div className="live-badge" style={{ position: 'absolute', top: 16, left: 16 }}>
-                LIVE
-              </div>
-              <button onClick={() => setIsMuted(!isMuted)} style={{ position: 'absolute', bottom: 16, right: 16, padding: '6px 12px', background: '#000', color: '#fff', border: 'none', cursor: 'pointer', fontSize: 11, fontWeight: 900 }}>
-                {isMuted ? 'TON AN' : 'TON AUS'}
+              <span className="b-badge b-badge--live" style={{ top: 0, left: 0 }}>Live</span>
+              <button type="button" className="b-button b-button--ghost b-button--s"
+                style={{ position: 'absolute', bottom: 'var(--space-2xs)', right: 'var(--space-2xs)' }}
+                onClick={() => setIsMuted(!isMuted)}>
+                {isMuted ? 'Ton an' : 'Ton aus'}
               </button>
             </div>
           )}
 
-          {/* Stream Info Bar */}
-          <div style={{ padding: '16px 20px', background: 'var(--bg-card)', display: 'flex', alignItems: 'center', gap: 16 }}>
-            <div style={{ width: 40, height: 40, background: '#0055b8', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontWeight: 900, fontSize: 14, color: '#fff' }}>
-              LIVE
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 15, fontWeight: 900, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase', letterSpacing: '0.04em' }}>
-                {liveStreamInfo?.title || 'Live Stream'}
-              </div>
-              <div style={{ fontSize: 11, fontWeight: 800, color: '#64748b', marginTop: 2, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                {liveStreamInfo?.uploader || 'Streamer'} · JETZT LIVE
-              </div>
-            </div>
-            <div style={{ marginLeft: 'auto', fontSize: 11, fontWeight: 800, color: '#94a3b8', flexShrink: 0, textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-              LIVE · {viewerCount} SCHAUEN ZU
+          <div>
+            <h1 className="b-heading b-heading--500">{title}</h1>
+            <div className="b-meta-line" style={{ marginTop: 'var(--space-3xs)' }}>
+              <span className="b-meta-line__item">{liveStreamInfo?.uploader || 'VfL Redaktion'}</span>
+              <span className="b-meta-line__item">Jetzt live</span>
+              <span className="b-meta-line__item">{viewerCount} Zuschauer</span>
             </div>
           </div>
         </div>
 
-        {/* Right: Chat Panel */}
-        <div style={{ display: 'flex', flexDirection: 'column', background: 'var(--bg-card)', overflow: 'hidden', height: 'calc(100% + 64px)', minHeight: 480, maxHeight: 640 }} className="live-chat-panel">
-          
-          {/* Chat Header */}
-          <div style={{ padding: '16px 20px', borderBottom: '1px solid rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-            <span style={{ fontSize: 13, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.06em' }}>LIVE CHAT</span>
-            <span style={{ fontSize: 11, fontWeight: 800, color: '#64748b' }}>{comments.length} NACHRICHTEN</span>
+        <div className="b-chat">
+          <div className="b-chat__header">
+            <span className="b-kicker">Chat</span>
+            <span className="b-meta-line__item">{comments.length} Nachrichten</span>
           </div>
 
-          {/* Messages */}
-          <div style={{ flex: 1, overflowY: 'auto', padding: '12px 16px', display: 'flex', flexDirection: 'column', gap: 8 }}>
+          <div className="b-chat__messages">
             {comments.map(c => (
-              <div key={c.id} style={{ padding: '8px 12px', background: c.isSystem ? 'rgba(0,85,184,0.15)' : 'rgba(255,255,255,0.04)', fontSize: 12, lineHeight: 1.4 }}>
+              <p key={c.id} className="b-chat__message">
                 {c.isSystem ? (
-                  <span style={{ color: '#60a5fa', fontSize: 11, fontWeight: 900, letterSpacing: '0.04em' }}>{c.text}</span>
+                  <span style={{ color: 'var(--color-alpha-500)' }}>{c.text}</span>
                 ) : (
                   <>
-                    <span style={{ fontWeight: 900, color: '#0055b8', marginRight: 8, textTransform: 'uppercase' }}>{c.user}</span>
-                    <span style={{ color: '#ffffff' }}>{c.text}</span>
+                    <span className="b-chat__author">{c.user}</span>
+                    <span>{c.text}</span>
                   </>
                 )}
-              </div>
+              </p>
             ))}
             <div ref={chatEndRef} />
           </div>
 
-          {/* Chat Input */}
-          <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.08)', display: 'flex', flexDirection: 'column', gap: 10 }}>
+          <form className="b-chat__form" onSubmit={handleCommentSubmit}>
             <input
+              className="b-input"
               type="text"
-              placeholder="DEIN NAME (OPTIONAL)"
+              placeholder="Dein Name"
               value={commentUser}
               onChange={e => setCommentUser(e.target.value)}
-              className="input-search"
-              style={{ width: '100%', padding: '8px 12px', fontSize: 11, textTransform: 'uppercase' }}
+              aria-label="Dein Name"
             />
-            <form onSubmit={handleCommentSubmit} style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 'var(--space-3xs)' }}>
               <input
+                className="b-input"
                 type="text"
-                placeholder="NACHRICHT SENDEN…"
+                placeholder="Nachricht schreiben"
                 value={commentText}
                 onChange={e => setCommentText(e.target.value)}
-                className="input-search"
-                style={{ flex: 1, padding: '8px 12px', fontSize: 12 }}
+                aria-label="Nachricht"
               />
-              <button type="submit" className="btn-primary" style={{ fontSize: 11, padding: '8px 16px', flexShrink: 0 }}>
-                SENDEN
-              </button>
-            </form>
-          </div>
+              <button type="submit" className="b-button b-button--primary b-button--s">Senden</button>
+            </div>
+          </form>
         </div>
       </div>
     </div>

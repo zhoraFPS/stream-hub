@@ -1,10 +1,9 @@
 import React from 'react';
-import { AlertCircle, RefreshCw, Home } from 'lucide-react';
 
 export default class ErrorBoundary extends React.Component {
   constructor(props) {
     super(props);
-    this.state = { hasError: false, error: null, errorInfo: null };
+    this.state = { hasError: false, error: null };
   }
 
   static getDerivedStateFromError(error) {
@@ -12,43 +11,46 @@ export default class ErrorBoundary extends React.Component {
   }
 
   componentDidCatch(error, errorInfo) {
-    console.error('StreamHub ErrorBoundary caught an error:', error, errorInfo);
-    this.setState({ errorInfo });
+    console.error('1848TV ErrorBoundary:', error, errorInfo);
   }
 
   render() {
-    if (this.state.hasError) {
-      return (
-        <div className="min-h-screen bg-[#07090e] text-white flex items-center justify-center p-6 text-center">
-          <div className="glass-panel p-8 max-w-md w-full rounded-xl border border-red-500/30 space-y-4">
-            <div className="w-12 h-12 rounded-full bg-red-500/10 border border-red-500/30 text-red-500 flex items-center justify-center mx-auto">
-              <AlertCircle className="w-6 h-6" />
-            </div>
-            <h2 className="text-xl font-bold">Ein Fehler ist aufgetreten</h2>
-            <p className="text-xs text-gray-400 leading-relaxed font-mono">
-              {this.state.error && this.state.error.toString()}
-            </p>
-            <div className="flex justify-center gap-3 pt-2">
-              <button
-                onClick={() => window.location.assign('/')}
-                className="btn-primary text-xs"
-              >
-                <Home className="w-4 h-4" />
-                Zur Startseite
-              </button>
-              <button
-                onClick={() => window.location.reload()}
-                className="btn-secondary text-xs"
-              >
-                <RefreshCw className="w-4 h-4" />
-                Neu laden
-              </button>
-            </div>
+    if (!this.state.hasError) return this.props.children;
+
+    return (
+      <div style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 'var(--space-s)',
+      }}>
+        <div className="b-panel b-panel--l" style={{ maxWidth: 'var(--max-width-s)', width: '100%' }}>
+          <div className="b-kicker" style={{ color: 'var(--color-error)' }}>Fehler</div>
+          <h1 className="b-heading b-heading--500" style={{ marginBlock: 'var(--space-2xs)' }}>
+            Die Seite konnte nicht geladen werden
+          </h1>
+          <p className="b-copy">
+            Lade die Seite neu. Bleibt der Fehler bestehen, melde ihn mit der folgenden Meldung.
+          </p>
+          <pre className="b-input b-input--mono" style={{
+            marginBlock: 'var(--space-s)',
+            whiteSpace: 'pre-wrap',
+            wordBreak: 'break-word',
+            fontSize: 'var(--step--2)',
+          }}>
+            {String(this.state.error)}
+          </pre>
+          <div className="b-row">
+            <button className="b-button b-button--primary b-button--s" onClick={() => window.location.reload()}>
+              Neu laden
+            </button>
+            <button className="b-button b-button--secondary b-button--s" onClick={() => window.location.assign('/')}>
+              Zur Startseite
+            </button>
           </div>
         </div>
-      );
-    }
-
-    return this.props.children;
+      </div>
+    );
   }
 }

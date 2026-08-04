@@ -1,0 +1,208 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   VfL Bochum 1848 — Design Tokens
+   Rekonstruiert aus vfl-bochum.de. Doku: docs/vfl-design-system.md
+   Drop-in: in src/index.css als erstes @import einbinden.
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+:root {
+  /* ── Schrift ───────────────────────────────────────────────────────────── */
+  /* VisbyCF ist kommerziell lizenziert. Bis die Vereins-Lizenzdateien da sind,
+     zeigt --font-brand auf die freie geometrische Alternative (Outfit).
+     Umstellen: @font-face für VisbyCF ergänzen und hier den Namen voranstellen. */
+  --font-fallback-sans:  system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+                         Roboto, Helvetica, Arial, sans-serif;
+  --font-fallback-serif: 'Georgia', 'Garamond', 'Baskerville', serif;
+  --font-fallback-mono:  'Courier New', 'Lucida Sans Typewriter', 'Lucida Console', monospace;
+
+  --font-brand:              'Outfit', var(--font-fallback-sans);
+  --font-display:            var(--font-brand);
+  --font-display-alternate:  var(--font-brand);
+  --font-subline:            var(--font-brand);
+  --font-text:               var(--font-brand);
+  --font-data:               var(--font-brand);
+
+  /* ── Rohfarben ─────────────────────────────────────────────────────────── */
+  --color-blue-dark-100: #054b7b;  --color-blue-dark-100-rgb: 5, 75, 123;
+  --color-blue-dark-200: #003863;  --color-blue-dark-200-rgb: 0, 56, 99;
+  --color-blue-dark-300: #003259;  --color-blue-dark-300-rgb: 0, 50, 89;
+  --color-blue-dark-400: #07283d;  --color-blue-dark-400-rgb: 7, 40, 61;
+  --color-blue-dark-500: #062031;  --color-blue-dark-500-rgb: 6, 32, 49;
+  --color-blue-dark-600: #041825;  --color-blue-dark-600-rgb: 4, 24, 37;
+
+  --color-blue-royal-300: #226bad; --color-blue-royal-300-rgb: 34, 107, 173;
+  --color-blue-royal-400: #095ba4; --color-blue-royal-400-rgb: 9, 91, 164;
+  --color-blue-royal-500: #085294; --color-blue-royal-500-rgb: 8, 82, 148;
+  --color-blue-royal-600: #074983; --color-blue-royal-600-rgb: 7, 73, 131;
+
+  --color-blue-light-400: #2799d6; --color-blue-light-400-rgb: 39, 153, 214;
+  --color-sail: #b0def9;           --color-sail-rgb: 176, 222, 249;
+  --color-ceil: #8d9ed0;           --color-ceil-rgb: 141, 158, 208;
+
+  --color-white-400: #ffffff;      --color-white-400-rgb: 255, 255, 255;
+  --color-white-blue-400: #e6eaec; --color-white-blue-400-rgb: 230, 234, 236;
+  --color-white-blue-500: #cdd4d8; --color-white-blue-500-rgb: 205, 212, 216;
+  --color-white-blue-600: #b5bfc5; --color-white-blue-600-rgb: 181, 191, 197;
+  --color-white-blue-700: #9ca9b1; --color-white-blue-700-rgb: 156, 169, 177;
+  --color-white-blue-800: #83949e; --color-white-blue-800-rgb: 131, 148, 158;
+
+  --color-black-400: #121212;      --color-black-400-rgb: 18, 18, 18;
+
+  --color-flame: #e84e1a;          --color-flame-rgb: 232, 78, 26;
+  --color-fern: #6dbd84;           --color-fern-rgb: 109, 189, 132;
+  --color-my-sin: #f8a940;         --color-my-sin-rgb: 248, 169, 64;
+  --color-yellow: #f2c94c;         --color-yellow-rgb: 242, 201, 76;
+  --color-faded-yellow: #fff481;   --color-faded-yellow-rgb: 255, 244, 129;
+  --color-cornell-red: #be1521;    --color-cornell-red-rgb: 190, 21, 33;
+  --color-tapestry: #be6086;       --color-tapestry-rgb: 190, 96, 134;
+  --color-cape-palliser: #9d6749;  --color-cape-palliser-rgb: 157, 103, 73;
+
+  /* ── Alpha-Leitern ─────────────────────────────────────────────────────── */
+  --color-light-alpha-50:  rgba(var(--color-white-400-rgb), .05);
+  --color-light-alpha-100: rgba(var(--color-white-400-rgb), .1);
+  --color-light-alpha-200: rgba(var(--color-white-400-rgb), .2);
+  --color-light-alpha-300: rgba(var(--color-white-400-rgb), .3);
+  --color-light-alpha-400: rgba(var(--color-white-400-rgb), .4);
+  --color-light-alpha-500: rgba(var(--color-white-400-rgb), .5);
+  --color-light-alpha-600: rgba(var(--color-white-400-rgb), .6);
+  --color-light-alpha-700: rgba(var(--color-white-400-rgb), .7);
+  --color-light-alpha-800: rgba(var(--color-white-400-rgb), .8);
+  --color-light-alpha-900: rgba(var(--color-white-400-rgb), .9);
+
+  --color-dark-alpha-50:  rgba(var(--color-black-400-rgb), .05);
+  --color-dark-alpha-100: rgba(var(--color-black-400-rgb), .1);
+  --color-dark-alpha-200: rgba(var(--color-black-400-rgb), .2);
+  --color-dark-alpha-300: rgba(var(--color-black-400-rgb), .3);
+  --color-dark-alpha-400: rgba(var(--color-black-400-rgb), .4);
+  --color-dark-alpha-500: rgba(var(--color-black-400-rgb), .5);
+  --color-dark-alpha-600: rgba(var(--color-black-400-rgb), .6);
+  --color-dark-alpha-700: rgba(var(--color-black-400-rgb), .7);
+  --color-dark-alpha-800: rgba(var(--color-black-400-rgb), .8);
+  --color-dark-alpha-900: rgba(var(--color-black-400-rgb), .9);
+
+  /* Dark Mode ist Default → alpha-* zeigt auf die helle Leiter */
+  --color-alpha-50:  var(--color-light-alpha-50);
+  --color-alpha-100: var(--color-light-alpha-100);
+  --color-alpha-200: var(--color-light-alpha-200);
+  --color-alpha-300: var(--color-light-alpha-300);
+  --color-alpha-400: var(--color-light-alpha-400);
+  --color-alpha-500: var(--color-light-alpha-500);
+  --color-alpha-600: var(--color-light-alpha-600);
+  --color-alpha-700: var(--color-light-alpha-700);
+  --color-alpha-800: var(--color-light-alpha-800);
+  --color-alpha-900: var(--color-light-alpha-900);
+
+  /* ── Semantische Farben ────────────────────────────────────────────────── */
+  --color-surface:               var(--color-blue-dark-600);
+  --color-surface-rgb:           var(--color-blue-dark-600-rgb);
+  --color-surface-alternate:     var(--color-blue-dark-500);
+  --color-surface-alternate-rgb: var(--color-blue-dark-500-rgb);
+
+  --color-front:      var(--color-white-blue-400);
+  --color-front-rgb:  var(--color-white-blue-400-rgb);
+  --color-display:    var(--color-white-blue-400);
+  --color-copy:       var(--color-white-blue-600);
+  --color-copy-rgb:   var(--color-white-blue-600-rgb);
+
+  --color-accent:            var(--color-white-blue-400);
+  --color-accent-rgb:        var(--color-white-blue-400-rgb);
+  --color-accent-dark:       var(--color-white-blue-500);
+  --color-accent-light:      var(--color-white-400);
+  --color-accent-negative:   var(--color-blue-dark-600);  /* Text auf Accent-Fläche */
+
+  --color-highlight:      var(--color-white-400);
+  --color-highlight-text: var(--color-blue-royal-400);
+  --color-line:           var(--color-alpha-200);
+
+  --color-overlay-background: var(--color-blue-dark-400);
+  --color-overlay-front:      var(--color-white-blue-400);
+  --color-media-background:   var(--color-surface-alternate);
+  --color-media-reveal:       var(--color-surface-alternate);
+
+  --color-error:   var(--color-flame);   --color-error-negative:   var(--color-black-400);
+  --color-success: var(--color-fern);    --color-success-negative: var(--color-black-400);
+  --color-warning: var(--color-my-sin);  --color-warning-negative: var(--color-black-400);
+  --color-info:    var(--color-white-400); --color-info-negative:  var(--color-black-400);
+
+  /* Live-Kennzeichnung (Stream-Hub-Ergänzung, nicht aus vfl-bochum.de) */
+  --color-live: var(--color-cornell-red);
+
+  /* ── Fluid Type Scale ──────────────────────────────────────────────────── */
+  --step--2: clamp(.7813rem, .7773rem + .0198vw, .809rem);
+  --step--1: clamp(.9375rem, .9174rem + .1006vw, 1.0784rem);
+  --step-0:  clamp(1.125rem, 1.0804rem + .2232vw, 1.4375rem);
+  --step-1:  clamp(1.35rem, 1.2691rem + .4044vw, 1.9162rem);
+  --step-2:  clamp(1.62rem, 1.4865rem + .6673vw, 2.5543rem);
+  --step-3:  clamp(1.944rem, 1.7353rem + 1.0435vw, 3.4049rem);
+  --step-4:  clamp(2.3328rem, 2.0177rem + 1.5756vw, 4.5387rem);
+  --step-5:  clamp(2.7994rem, 2.335rem + 2.3219vw, 6.05rem);
+  --step-6:  clamp(3.3592rem, 2.687rem + 3.3611vw, 8.0647rem);
+  --step-7:  clamp(4.0311rem, 3.0712rem + 4.7994vw, 10.7503rem);
+  --step-8:  clamp(4.8373rem, 3.4812rem + 6.7806vw, 14.3301rem);
+
+  /* ── Fluid Spacing ─────────────────────────────────────────────────────── */
+  --space-3xs: clamp(.31rem, .31rem, .31rem);
+  --space-2xs: clamp(.56rem, calc(.55rem + .07vw), .63rem);
+  --space-xs:  clamp(.88rem, calc(.86rem + .07vw), .94rem);
+  --space-s:   clamp(1.13rem, calc(1.1rem + .14vw), 1.25rem);
+  --space-m:   clamp(1.69rem, calc(1.64rem + .21vw), 1.88rem);
+  --space-l:   clamp(2.25rem, calc(2.19rem + .28vw), 2.5rem);
+  --space-xl:  clamp(3.38rem, calc(3.29rem + .43vw), 3.75rem);
+  --space-2xl: clamp(4.5rem, calc(4.39rem + .57vw), 5rem);
+  --space-3xl: clamp(6.75rem, calc(6.58rem + .85vw), 7.5rem);
+  --space-4xl: clamp(11.25rem, calc(10.97rem + 1.42vw), 12.5rem);
+  --space-5xl: clamp(13.5rem, calc(13.16rem + 1.7vw), 15rem);
+
+  --space-3xs-2xs: clamp(.31rem, calc(.24rem + .36vw), .63rem);
+  --space-2xs-xs:  clamp(.56rem, calc(.48rem + .43vw), .94rem);
+  --space-xs-s:    clamp(.88rem, calc(.79rem + .43vw), 1.25rem);
+  --space-s-m:     clamp(1.13rem, calc(.95rem + .85vw), 1.88rem);
+  --space-m-l:     clamp(1.69rem, calc(1.5rem + .92vw), 2.5rem);
+  --space-l-xl:    clamp(2.25rem, calc(1.91rem + 1.7vw), 3.75rem);
+  --space-xl-2xl:  clamp(3.38rem, calc(3.01rem + 1.85vw), 5rem);
+  --space-2xl-3xl: clamp(4.5rem, calc(3.82rem + 3.41vw), 7.5rem);
+  --space-3xl-4xl: clamp(6.75rem, calc(5.44rem + 6.53vw), 12.5rem);
+  --space-4xl-5xl: clamp(11.25rem, calc(10.4rem + 4.26vw), 15rem);
+
+  /* ── Layout ────────────────────────────────────────────────────────────── */
+  --grid-gap-x: var(--space-s);
+  --grid-gap-y: var(--space-xl);
+
+  --section-gap:          var(--space-2xl-3xl);
+  --section-gap-compact:  var(--space-xl);
+  --section-gap-spacious: var(--space-3xl-4xl);
+  --main-padding-top:     var(--space-4xl-5xl);
+  --main-padding-top-s:   var(--space-3xl-4xl);
+
+  --page-padding-x-phone:   var(--space-s);
+  --page-padding-x-tablet:  var(--space-m);
+  --page-padding-x-desktop: var(--space-xl);
+  --page-padding-y-phone:   var(--space-s);
+  --page-padding-y-tablet:  var(--space-m);
+  --page-padding-y-desktop: var(--space-l);
+
+  --max-width-s:    600px;
+  --max-width-m:    900px;
+  --max-width-l:    1000px;
+  --max-width-type: 720px;
+
+  /* ── Radius ────────────────────────────────────────────────────────────── */
+  /* Bewusst fast überall 0 — harte Kanten sind Markenzeichen.
+     --border-radius-s wird ausschließlich für Filter-Chips verwendet. */
+  --border-radius-s:  var(--space-2xs);
+  --border-radius-m:  var(--space-s);
+  --border-radius-l:  var(--space-m);
+  --border-radius-xl: var(--space-xl);
+
+  /* ── Breakpoints (für @media (--break-tablet) via PostCSS, sonst Referenz) ─ */
+  --break-phone-l:    (min-width: 480px);
+  --break-tablet:     (min-width: 768px);
+  --break-desktop-s:  (min-width: 1024px);
+  --break-desktop-m:  (min-width: 1280px);
+  --break-desktop-l:  (min-width: 1600px);
+  --break-desktop-xl: (min-width: 1921px);
+
+  /* ── Motion ────────────────────────────────────────────────────────────── */
+  --transition-fast: .15s ease;
+  --transition-base: .25s ease;
+  --transition-slow: .4s ease;
+}

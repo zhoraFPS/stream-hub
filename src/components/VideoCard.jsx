@@ -1,64 +1,61 @@
 import React from 'react';
+import Media from './ui/Media';
+import { formatDuration, formatDate } from '../utils/formatters';
+import { categoryLabel } from '../constants/categories';
 
-function formatDuration(seconds) {
-  if (!seconds || isNaN(seconds)) return '00:00';
-  const s = Math.floor(seconds);
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  return `${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}`;
-}
+/**
+ * Video-Kachel nach dem b-card-article Muster: transparente Fläche,
+ * Bild trägt die Struktur, darunter Titel und Meta-Zeile.
+ */
+export default function VideoCard({ video, onSelectVideo, onDeleteVideo, compact = false }) {
+  const title = video.title || 'Ohne Titel';
+  const date = formatDate(video.createdAt || video.created_at);
+  const category = categoryLabel(video.category);
+  const views = video.views ?? 0;
+  const isLive = !!video.isLive;
 
-function formatRelativeTime(dateString) {
-  if (!dateString) return '';
-  const diff = Math.floor((Date.now() - new Date(dateString).getTime()) / 1000);
-  if (diff < 3600) return 'GERADE EBEN';
-  const hours = Math.floor(diff / 3600);
-  if (hours < 24) return `VOR ${hours} STD.`;
-  const days = Math.floor(hours / 24);
-  return `VOR ${days} TAGEN`;
-}
-
-export default function VideoCard({ video, onSelectVideo, onDeleteVideo }) {
   return (
-    <div className="video-card" onClick={() => onSelectVideo(video)}>
-      <div className="video-card-thumb">
-        <img
-          src={video.thumbnailUrl}
-          alt={video.title}
-          loading="lazy"
-        />
-
-        <span className="badge-duration">{formatDuration(video.duration)}</span>
-
-        {onDeleteVideo && (
-          <button
-            className="video-card-delete"
-            title="Video löschen"
-            onClick={(e) => {
-              e.stopPropagation();
-              onDeleteVideo(video.id);
-            }}
-          >
-            LÖSCHEN
-          </button>
-        )}
-      </div>
-
-      <div className="video-card-info">
-        <h3 className="video-card-title">{video.title}</h3>
-
-        <div className="video-card-meta">
-          <span>{video.uploader || 'UNBEKANNT'}</span>
-          <span style={{ margin: '0 4px', color: '#64748b' }}>•</span>
-          <span>{formatRelativeTime(video.createdAt || video.created_at)}</span>
+    <article className={`b-card-article${compact ? ' b-card-article--compact' : ''}`}>
+      <button
+        type="button"
+        className="b-card-article__link"
+        onClick={() => onSelectVideo?.(video)}
+      >
+        <div className="b-card-article__media">
+          <Media
+            src={video.thumbnailUrl || video.thumbnail_url}
+            alt=""
+            ratio="p-16x9"
+            fallback={isLive ? 'Live' : '1848TV'}
+          />
+          {isLive ? (
+            <span className="b-badge b-badge--live">Live</span>
+          ) : (
+            video.duration > 0 && (
+              <span className="b-badge b-badge--duration">{formatDuration(video.duration)}</span>
+            )
+          )}
         </div>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10, fontSize: 11, color: '#64748b', fontWeight: 800 }}>
-          <span>{video.views ?? 0} AUFRUFE</span>
-          <span>•</span>
-          <span>{video.likes ?? 0} LIKES</span>
+        <div className="b-card-article__content">
+          <h3 className="b-card-article__title b-truncate">{title}</h3>
+          <div className="b-meta-line">
+            {date && <span className="b-meta-line__item">{date}</span>}
+            <span className="b-meta-line__item">{category}</span>
+            {!isLive && !compact && <span className="b-meta-line__item">{views} Aufrufe</span>}
+          </div>
         </div>
-      </div>
-    </div>
+      </button>
+
+      {onDeleteVideo && (
+        <button
+          type="button"
+          className="b-card-article__delete"
+          onClick={(e) => { e.stopPropagation(); onDeleteVideo(video.id); }}
+        >
+          Löschen
+        </button>
+      )}
+    </article>
   );
 }

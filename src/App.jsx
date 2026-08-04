@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import ErrorBoundary from './components/ErrorBoundary';
 import Navbar from './components/Navbar';
-import Sidebar from './components/Sidebar';
 import VideoCard from './components/VideoCard';
 import VideoPlayer from './components/VideoPlayer';
 import LivePlayer from './components/LivePlayer';
@@ -11,17 +10,22 @@ import QRCodeModal from './components/QRCodeModal';
 import AuthPage from './components/AuthPage';
 import ChannelPage from './components/ChannelPage';
 import SettingsPage from './components/SettingsPage';
+import SectionTitle from './components/ui/SectionTitle';
+import Chips from './components/ui/Chips';
+import Reveal from './components/ui/Reveal';
+import Icon from './components/ui/Icon';
+import { CATEGORIES, CATEGORY_FILTERS, categoryLabel } from './constants/categories';
 
 export default function App() {
-  // ── Page State ──────────────────────────────────────────────────────────────
+  // ── Seitenzustand ───────────────────────────────────────────────────────────
   const [currentPage, setCurrentPage] = useState('home'); // home|watch|live|studio|auth|channel|settings
   const [channelUsername, setChannelUsername] = useState(null);
 
-  // ── Auth State ──────────────────────────────────────────────────────────────
+  // ── Auth ────────────────────────────────────────────────────────────────────
   const [authToken, setAuthToken] = useState(() => localStorage.getItem('streamhub_token'));
   const [currentUser, setCurrentUser] = useState(null);
 
-  // ── Content State ───────────────────────────────────────────────────────────
+  // ── Inhalte ─────────────────────────────────────────────────────────────────
   const [videos, setVideos] = useState([]);
   const [liveChannels, setLiveChannels] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
@@ -32,11 +36,11 @@ export default function App() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  // ── Modals ──────────────────────────────────────────────────────────────────
+  // ── Modale ──────────────────────────────────────────────────────────────────
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isQROpen, setIsQROpen] = useState(false);
 
-  // ── Auth helpers ────────────────────────────────────────────────────────────
+  // ── Auth-Helfer ─────────────────────────────────────────────────────────────
   const authHeaders = useCallback(() =>
     authToken ? { Authorization: `Bearer ${authToken}` } : {}, [authToken]);
 
@@ -54,7 +58,6 @@ export default function App() {
     setCurrentPage('home');
   };
 
-  // Fetch own profile on load if token exists
   useEffect(() => {
     if (!authToken) return;
     fetch('/api/auth/me', { headers: { Authorization: `Bearer ${authToken}` } })
@@ -63,7 +66,7 @@ export default function App() {
       .catch(() => {});
   }, [authToken]);
 
-  // ── Data Fetching ───────────────────────────────────────────────────────────
+  // ── Daten ───────────────────────────────────────────────────────────────────
   const fetchVideos = useCallback(async (quiet = false) => {
     try {
       if (!quiet) setLoading(true);
@@ -71,7 +74,7 @@ export default function App() {
       if (selectedCategory && selectedCategory !== 'All') url.searchParams.append('category', selectedCategory);
       if (searchQuery) url.searchParams.append('search', searchQuery);
       const res = await fetch(url, { headers: authHeaders() });
-      if (!res.ok) throw new Error('Fehler beim Laden');
+      if (!res.ok) throw new Error('Videos konnten nicht geladen werden.');
       setVideos(await res.json());
       setError(null);
     } catch (err) {
@@ -90,31 +93,29 @@ export default function App() {
       const res = await fetch('/api/live/status');
       if (res.ok) {
         const data = await res.json();
-        if (data.active) setActiveLive(data.stream);
-        else setActiveLive(null);
+        setActiveLive(data.active ? data.stream : null);
       }
     } catch {}
   }, []);
 
-  const fetchSystemInfo = async () => {
-    try {
-      const res = await fetch('/api/system/info');
-      if (res.ok) setSystemInfo(await res.json());
-    } catch {}
-  };
+  useEffect(() => {
+    fetch('/api/system/info')
+      .then(res => res.ok ? res.json() : null)
+      .then(info => { if (info) setSystemInfo(info); })
+      .catch(() => {});
+  }, []);
 
-  useEffect(() => { fetchSystemInfo(); }, []);
   useEffect(() => { fetchVideos(); fetchLiveChannels(); }, [selectedCategory, searchQuery]);
+
   useEffect(() => {
     const interval = setInterval(() => { fetchVideos(true); fetchLiveChannels(); }, 5000);
     return () => clearInterval(interval);
   }, [fetchVideos, fetchLiveChannels]);
 
-  // ── Navigation & Hash Routing ────────────────────────────────────────────────
+  // ── Navigation ──────────────────────────────────────────────────────────────
   const goHome = () => {
     setCurrentPage('home');
     setActiveVideo(null);
-    setActiveLive(null);
     if (window.location.hash) window.location.hash = '';
   };
 
@@ -129,6 +130,7 @@ export default function App() {
     } else {
       setActiveVideo(video);
       setCurrentPage('watch');
+      window.scrollTo({ top: 0 });
       if (video.id) window.location.hash = `#watch=${video.id}`;
     }
   };
@@ -140,21 +142,25 @@ export default function App() {
     window.location.hash = `#channel=${username}`;
   };
 
+  const openStudio = () => { setCurrentPage('studio'); window.location.hash = '#studio'; };
+  const openSettings = () => { setCurrentPage('settings'); window.location.hash = '#settings'; };
+  const openLive = () => {
+    const channel = liveChannels[0];
+    if (channel?.username) openChannel(channel.username);
+    else { setCurrentPage('live'); window.location.hash = '#live'; }
+  };
+
   useEffect(() => {
     const handleHash = async () => {
       const hash = window.location.hash;
       if (hash.startsWith('#channel=')) {
         const uname = hash.replace('#channel=', '');
         if (uname) { setChannelUsername(uname); setCurrentPage('channel'); }
-      } else if (hash === '#studio') {
-        setCurrentPage('studio');
-      } else if (hash === '#settings') {
-        setCurrentPage('settings');
-      } else if (hash === '#auth') {
-        setCurrentPage('auth');
-      } else if (hash === '#live') {
-        setCurrentPage('live');
-      } else if (hash.startsWith('#watch=')) {
+      } else if (hash === '#studio') setCurrentPage('studio');
+      else if (hash === '#settings') setCurrentPage('settings');
+      else if (hash === '#auth') setCurrentPage('auth');
+      else if (hash === '#live') setCurrentPage('live');
+      else if (hash.startsWith('#watch=')) {
         const vidId = hash.replace('#watch=', '');
         if (vidId) {
           setCurrentPage('watch');
@@ -163,9 +169,7 @@ export default function App() {
             if (res.ok) setActiveVideo(await res.json());
           } catch {}
         }
-      } else if (!hash) {
-        setCurrentPage('home');
-      }
+      } else if (!hash) setCurrentPage('home');
     };
     handleHash();
     window.addEventListener('hashchange', handleHash);
@@ -184,18 +188,63 @@ export default function App() {
   };
 
   const isLiveActive = !!activeLive || liveChannels.length > 0;
+  const isFiltered = selectedCategory !== 'All' || !!searchQuery;
 
-  // ══════════════════════════════════════════════════════════════════════════════
-  // PAGES
-  // ══════════════════════════════════════════════════════════════════════════════
+  const featuredLiveChannel = liveChannels[0] || (activeLive?.username ? activeLive : null);
+  const featuredVideo = !isFiltered ? videos[0] : null;
+
+  /** Bei „Alle" gruppieren wir wie 1848TV in Reihen pro Kategorie. */
+  const lanes = useMemo(() => {
+    if (isFiltered) return [];
+    return CATEGORIES
+      .map(cat => ({ ...cat, items: videos.filter(v => v.category === cat.value) }))
+      .filter(lane => lane.items.length > 0);
+  }, [videos, isFiltered]);
+
+  const uncategorised = useMemo(() => {
+    if (isFiltered) return [];
+    const known = new Set(CATEGORIES.map(c => c.value));
+    return videos.filter(v => !known.has(v.category));
+  }, [videos, isFiltered]);
+
+  const navProps = {
+    search: searchQuery, setSearch: setSearchQuery,
+    onOpenUpload: authToken ? () => setIsUploadOpen(true) : () => setCurrentPage('auth'),
+    onOpenQR: () => setIsQROpen(true),
+    systemInfo, isLive: isLiveActive,
+    currentUser, authToken,
+    onLogin: () => setCurrentPage('auth'),
+    onLogout: handleLogout,
+    onOpenChannel: () => openChannel(currentUser?.username),
+    onOpenSettings: openSettings,
+    onOpenStudio: openStudio,
+    onOpenLive: openLive,
+    onHome: goHome,
+  };
+
+  const modals = (
+    <>
+      {isUploadOpen && (
+        <UploadModal
+          isOpen={isUploadOpen}
+          onClose={() => setIsUploadOpen(false)}
+          onUploadComplete={handleUploadComplete}
+          systemInfo={systemInfo}
+          authToken={authToken}
+        />
+      )}
+      {isQROpen && <QRCodeModal isOpen onClose={() => setIsQROpen(false)} systemInfo={systemInfo} />}
+    </>
+  );
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // Unterseiten
+  // ══════════════════════════════════════════════════════════════════════════
 
   if (currentPage === 'auth') {
     return (
       <ErrorBoundary>
-        <AuthPage onAuth={handleAuth} />
-        <div style={{ position: 'fixed', top: 16, left: 16 }}>
-          <button onClick={goHome} className="btn-secondary" style={{ fontSize: 11 }}>← ZURÜCK</button>
-        </div>
+        <AuthPage onAuth={handleAuth} onBack={goHome} />
       </ErrorBoundary>
     );
   }
@@ -203,7 +252,10 @@ export default function App() {
   if (currentPage === 'live' && activeLive) {
     return (
       <ErrorBoundary>
-        <LivePlayer liveStreamInfo={activeLive} onBack={goHome} />
+        <Navbar {...navProps} activePage="live" />
+        <div className="b-page b-page--wide">
+          <LivePlayer liveStreamInfo={activeLive} onBack={goHome} />
+        </div>
       </ErrorBoundary>
     );
   }
@@ -211,12 +263,18 @@ export default function App() {
   if (currentPage === 'watch' && activeVideo) {
     return (
       <ErrorBoundary>
-        <VideoPlayer
-          video={activeVideo}
-          onBack={goHome}
-          systemInfo={systemInfo}
-          authToken={authToken}
-        />
+        <Navbar {...navProps} />
+        <div className="b-page b-page--wide">
+          <VideoPlayer
+            video={activeVideo}
+            allVideos={videos}
+            onSelectVideo={openVideo}
+            onOpenChannel={openChannel}
+            onBack={goHome}
+            systemInfo={systemInfo}
+            authToken={authToken}
+          />
+        </div>
       </ErrorBoundary>
     );
   }
@@ -224,7 +282,15 @@ export default function App() {
   if (currentPage === 'studio') {
     return (
       <ErrorBoundary>
-        <LiveStudioPage onBack={goHome} systemInfo={systemInfo} authToken={authToken} currentUser={currentUser} />
+        <Navbar {...navProps} activePage="studio" />
+        <div className="b-page b-page--wide">
+          <LiveStudioPage
+            onBack={goHome}
+            systemInfo={systemInfo}
+            authToken={authToken}
+            currentUser={currentUser}
+          />
+        </div>
       </ErrorBoundary>
     );
   }
@@ -232,19 +298,8 @@ export default function App() {
   if (currentPage === 'channel' && channelUsername) {
     return (
       <ErrorBoundary>
-        <div style={{ background: 'var(--bg-main)', minHeight: '100vh', paddingTop: '84px' }}>
-          <Navbar
-            search={searchQuery} setSearch={setSearchQuery}
-            onOpenUpload={() => setIsUploadOpen(true)}
-            onOpenQR={() => setIsQROpen(true)}
-            systemInfo={systemInfo} isLive={isLiveActive}
-            currentUser={currentUser} authToken={authToken}
-            onLogin={() => setCurrentPage('auth')}
-            onLogout={handleLogout}
-            onOpenChannel={() => openChannel(currentUser?.username)}
-            onOpenSettings={() => setCurrentPage('settings')}
-            onHome={goHome}
-          />
+        <Navbar {...navProps} />
+        <div className="b-page b-page--wide">
           <ChannelPage
             username={channelUsername}
             currentUser={currentUser}
@@ -253,6 +308,7 @@ export default function App() {
             onSelectVideo={openVideo}
           />
         </div>
+        {modals}
       </ErrorBoundary>
     );
   }
@@ -260,239 +316,297 @@ export default function App() {
   if (currentPage === 'settings' && currentUser) {
     return (
       <ErrorBoundary>
-        <div style={{ background: 'var(--bg-main)', minHeight: '100vh', paddingTop: '84px' }}>
-          <Navbar
-            search={searchQuery} setSearch={setSearchQuery}
-            onOpenUpload={() => setIsUploadOpen(true)}
-            onOpenQR={() => setIsQROpen(true)}
-            systemInfo={systemInfo} isLive={isLiveActive}
-            currentUser={currentUser} authToken={authToken}
-            onLogin={() => setCurrentPage('auth')}
-            onLogout={handleLogout}
-            onOpenChannel={() => openChannel(currentUser?.username)}
-            onOpenSettings={() => setCurrentPage('settings')}
-            onHome={goHome}
-          />
+        <Navbar {...navProps} />
+        <div className="b-page">
           <SettingsPage
             currentUser={currentUser}
             authToken={authToken}
             onBack={goHome}
-            onUserUpdate={(updatedUser) => setCurrentUser(updatedUser)}
+            onUserUpdate={setCurrentUser}
           />
         </div>
       </ErrorBoundary>
     );
   }
 
-  // ── HOME PAGE ───────────────────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════════
+  // Startseite
+  // ══════════════════════════════════════════════════════════════════════════
+
   return (
     <ErrorBoundary>
-      <div style={{ background: 'var(--bg-main)', minHeight: '100vh' }}>
-        <Navbar
-          search={searchQuery} setSearch={setSearchQuery}
-          selectedCategory={selectedCategory} setSelectedCategory={setSelectedCategory}
-          onOpenUpload={authToken ? () => setIsUploadOpen(true) : () => setCurrentPage('auth')}
-          onOpenQR={() => setIsQROpen(true)}
-          systemInfo={systemInfo} isLive={isLiveActive}
-          currentUser={currentUser} authToken={authToken}
-          onLogin={() => setCurrentPage('auth')}
-          onLogout={handleLogout}
-          onOpenChannel={() => openChannel(currentUser?.username)}
-          onOpenSettings={() => setCurrentPage('settings')}
-          onHome={goHome}
-        />
+      <Navbar {...navProps} variant="overlay" activePage="home" />
 
-        <div style={{ maxWidth: 1600, margin: '0 auto', paddingTop: '84px' }}>
-          <main style={{ padding: '16px 20px 48px', width: '100%' }}>
+      <Hero
+        liveChannel={featuredLiveChannel}
+        video={featuredVideo}
+        onOpenChannel={openChannel}
+        onSelectVideo={openVideo}
+      />
 
-            {/* ── LIVE STREAMS SECTION ────────────────────────────────────── */}
-            {(liveChannels.length > 0 || activeLive) && (
-              <section style={{ marginBottom: 32 }}>
-                <FeaturedLiveHero
-                  channel={liveChannels[0] || (activeLive?.username ? activeLive : null)}
-                  onOpenChannel={openChannel}
+      <div className="b-page b-page--wide" style={{ paddingBlockStart: 'var(--space-xl)' }}>
+
+        {/* Weitere Live-Kanäle */}
+        {liveChannels.length > 1 && (
+          <Reveal as="section" className="b-section b-section--compact">
+            <SectionTitle title="Weitere Live-Kanäle" count={liveChannels.length - 1} />
+            <div className="b-lane">
+              {liveChannels.slice(1).map(ch => (
+                <VideoCard
+                  key={ch.id}
+                  video={{
+                    id: ch.id,
+                    title: ch.live_title || 'VfL Bochum 1848 — Live',
+                    isLive: true,
+                    username: ch.username,
+                    category: 'Spiele',
+                  }}
+                  onSelectVideo={() => openChannel(ch.username)}
                 />
-                {liveChannels.length > 1 && (
-                  <div>
-                    <h3 style={{ fontSize: 13, fontWeight: 900, color: '#64748b', marginBottom: 14, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-                      WEITERE LIVE-KANÄLE ({liveChannels.length - 1})
-                    </h3>
-                    <div style={{ display: 'flex', gap: 16, flexWrap: 'wrap' }}>
-                      {liveChannels.slice(1).map(ch => (
-                        <LiveChannelCard key={ch.id} channel={ch} onClick={() => openChannel(ch.username)} />
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </section>
-            )}
+              ))}
+            </div>
+          </Reveal>
+        )}
 
-            {/* ── HERO BANNER (kein Live-Stream aktiv) ──────────────────── */}
-            {!isLiveActive && videos.length === 0 && !loading && (
-              <div style={{
-                padding: '36px 32px', marginBottom: 32,
-                background: 'var(--bg-card)',
-              }}>
-                <div style={{ marginBottom: 12 }}>
-                  <h2 style={{ fontSize: 22, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>VfL Bochum 1848 TV</h2>
-                  <p style={{ fontSize: 12, color: '#64748b', marginTop: 4, textTransform: 'uppercase', letterSpacing: '0.08em', fontWeight: 800 }}>Spiele · Interviews · Training · Behind the Scenes</p>
-                </div>
-                <p style={{ fontSize: 13, color: '#94a3b8', lineHeight: 1.6, maxWidth: 800 }}>
-                  Willkommen auf dem offiziellen Streaming-Portal des VfL Bochum 1848. Hier findet ihr Livestreams von Testspielen, exklusive Interviews sowie Zusammenfassungen und Berichte rund um unseren Verein.
+        {/* Mediathek */}
+        <Reveal as="section" className="b-section">
+          <SectionTitle
+            title={isFiltered ? (searchQuery ? 'Suchergebnisse' : categoryLabel(selectedCategory)) : 'Neueste Videos'}
+            count={isFiltered && !loading ? videos.length : null}
+            action={isFiltered ? { label: 'Filter zurücksetzen', onClick: () => { setSelectedCategory('All'); setSearchQuery(''); } } : null}
+          >
+            <Chips
+              items={CATEGORY_FILTERS}
+              value={selectedCategory}
+              onChange={setSelectedCategory}
+            />
+          </SectionTitle>
+
+          {loading ? (
+            <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-2xl)' }}>
+              <div className="b-spinner" />
+            </div>
+          ) : error ? (
+            <div className="b-notice b-notice--error">{error}</div>
+          ) : videos.length === 0 ? (
+            <EmptyState authToken={authToken} search={searchQuery} onLogin={() => setCurrentPage('auth')} />
+          ) : isFiltered ? (
+            <div className="b-grid">
+              {videos.map(video => (
+                <VideoCard
+                  key={video.id}
+                  video={toCardVideo(video)}
+                  onSelectVideo={openVideo}
+                  onDeleteVideo={canDelete(video, currentUser) ? handleDeleteVideo : null}
+                />
+              ))}
+            </div>
+          ) : (
+            <div className="b-lane">
+              {videos.slice(featuredVideo ? 1 : 0, featuredVideo ? 13 : 12).map(video => (
+                <VideoCard
+                  key={video.id}
+                  video={toCardVideo(video)}
+                  onSelectVideo={openVideo}
+                  onDeleteVideo={canDelete(video, currentUser) ? handleDeleteVideo : null}
+                />
+              ))}
+            </div>
+          )}
+        </Reveal>
+
+        {/* Reihen pro Kategorie — nur ungefiltert */}
+        {!loading && !error && lanes.map(lane => (
+          <Reveal as="section" key={lane.value} className="b-section">
+            <SectionTitle
+              title={lane.label}
+              count={lane.items.length}
+              action={{ label: 'Alle ansehen', onClick: () => setSelectedCategory(lane.value) }}
+            />
+            <div className="b-lane">
+              {lane.items.map(video => (
+                <VideoCard
+                  key={video.id}
+                  video={toCardVideo(video)}
+                  onSelectVideo={openVideo}
+                  onDeleteVideo={canDelete(video, currentUser) ? handleDeleteVideo : null}
+                />
+              ))}
+            </div>
+          </Reveal>
+        ))}
+
+        {!loading && uncategorised.length > 0 && (
+          <Reveal as="section" className="b-section">
+            <SectionTitle title="Sonstiges" count={uncategorised.length} />
+            <div className="b-lane">
+              {uncategorised.map(video => (
+                <VideoCard
+                  key={video.id}
+                  video={toCardVideo(video)}
+                  onSelectVideo={openVideo}
+                  onDeleteVideo={canDelete(video, currentUser) ? handleDeleteVideo : null}
+                />
+              ))}
+            </div>
+          </Reveal>
+        )}
+
+        {/* Redaktions-Einstieg */}
+        {!authToken && (
+          <Reveal as="section" className="b-section b-section--compact">
+            <div className="b-panel b-panel--l" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-s)' }}>
+              <div style={{ flex: '1 1 320px' }}>
+                <div className="b-kicker" style={{ marginBottom: 'var(--space-3xs)' }}>Für die Redaktion</div>
+                <h2 className="b-heading b-heading--500">Videos hochladen und live gehen</h2>
+                <p className="b-copy" style={{ marginTop: 'var(--space-3xs)' }}>
+                  Melde dich an, um Testspiele zu streamen, Interviews zu veröffentlichen und die Mediathek zu pflegen.
                 </p>
               </div>
-            )}
-
-            {/* ── LOGIN PROMPT (nicht eingeloggt) ────────────────────────── */}
-            {!authToken && (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '16px 20px', background: 'var(--bg-card)', marginBottom: 32 }}>
-                <div style={{ flex: 1, fontSize: 12, color: '#94a3b8' }}>
-                  <span style={{ color: '#ffffff', fontWeight: 900, textTransform: 'uppercase', letterSpacing: '0.05em' }}>VfL-REDAKTEUR?</span> Melde dich an um Videos hochzuladen und live zu streamen.
-                </div>
-                <button onClick={() => setCurrentPage('auth')} className="btn-primary"
-                  style={{ fontSize: 11, padding: '8px 16px', flexShrink: 0 }}>
-                  ANMELDEN
-                </button>
-              </div>
-            )}
-
-            {/* ── VIDEO GRID ──────────────────────────────────────────────── */}
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-              <h2 style={{ fontSize: 15, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-                {selectedCategory === 'All' ? 'ALLE VIDEOS' : selectedCategory.replace('_', ' ').toUpperCase()}
-                {!loading && <span style={{ fontSize: 12, color: '#64748b', fontWeight: 800, marginLeft: 8 }}>({videos.length})</span>}
-              </h2>
-              <button onClick={() => fetchVideos()} className="btn-secondary" style={{ fontSize: 11 }}>
-                AKTUALISIEREN
+              <button className="b-button b-button--primary" onClick={() => setCurrentPage('auth')}>
+                Anmelden
+                <Icon name="arrow-right" size={20} />
               </button>
             </div>
-
-            {loading ? (
-              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: 200 }}>
-                <div style={{ width: 36, height: 36, border: '3px solid rgba(255,255,255,0.1)', borderTop: '3px solid #0055b8', animation: 'spin 0.8s linear infinite' }} />
-              </div>
-            ) : error ? (
-              <div style={{ textAlign: 'center', padding: 48 }}>
-                <p style={{ color: '#ef4444', fontSize: 13, fontWeight: 900, textTransform: 'uppercase' }}>{error}</p>
-              </div>
-            ) : videos.length === 0 ? (
-              <div className="empty-state">
-                <p style={{ fontSize: 15, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.04em' }}>NOCH KEINE VIDEOS VORHANDEN</p>
-                <p style={{ fontSize: 12, color: '#64748b', marginTop: 8 }}>
-                  {authToken ? 'Lade das erste VfL-Video hoch!' : 'Schau bald wieder vorbei!'}
-                </p>
-              </div>
-            ) : (
-              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 16 }}>
-                {videos.map(video => (
-                  <VideoCard
-                    key={video.id}
-                    video={{ ...video, videoUrl: `/api/videos/${video.id}/stream`, thumbnailUrl: video.thumbnail_url || video.thumbnailUrl }}
-                    onSelectVideo={openVideo}
-                    onDeleteVideo={authToken && (video.user_id === currentUser?.id) ? handleDeleteVideo : null}
-                    systemInfo={systemInfo}
-                    onOpenChannel={openChannel}
-                  />
-                ))}
-              </div>
-            )}
-          </main>
-        </div>
-
-        {isUploadOpen && (
-          <UploadModal
-            isOpen={isUploadOpen}
-            onClose={() => setIsUploadOpen(false)}
-            onUploadComplete={handleUploadComplete}
-            systemInfo={systemInfo}
-            authToken={authToken}
-          />
+          </Reveal>
         )}
-        {isQROpen && <QRCodeModal onClose={() => setIsQROpen(false)} systemInfo={systemInfo} />}
       </div>
+
+      <Marquee />
+      {modals}
     </ErrorBoundary>
   );
 }
 
-// ── Live Channel Card ─────────────────────────────────────────────────────────
-function LiveChannelCard({ channel, onClick }) {
+// ── Helfer ────────────────────────────────────────────────────────────────────
+
+function toCardVideo(video) {
+  return {
+    ...video,
+    videoUrl: `/api/videos/${video.id}/stream`,
+    thumbnailUrl: video.thumbnail_url || video.thumbnailUrl,
+  };
+}
+
+function canDelete(video, currentUser) {
+  return !!currentUser && video.user_id === currentUser.id;
+}
+
+// ── Hero ──────────────────────────────────────────────────────────────────────
+
+/**
+ * Der Hero zeigt, was gerade zählt: läuft ein Stream, gehört ihm die Fläche.
+ * Sonst steht das neueste Video vorne. Ist die Mediathek leer, erklärt der
+ * Hero, was das Portal ist.
+ */
+function Hero({ liveChannel, video, onOpenChannel, onSelectVideo }) {
+  if (liveChannel) {
+    const title = liveChannel.live_title || liveChannel.title || 'VfL Bochum 1848 — Live';
+    const name = liveChannel.display_name || liveChannel.username;
+    return (
+      <section className="b-hero">
+        <div className="b-hero__media" aria-hidden="true">
+          <img src="/bg-figma.jpg" alt="" />
+        </div>
+        <div className="b-hero__scrim" aria-hidden="true" />
+        <div className="b-hero__content">
+          <div className="b-row">
+            <span className="b-badge b-badge--live b-badge--static">Live</span>
+            <span className="b-kicker">{name}</span>
+          </div>
+          <h1 className="b-heading b-heading--800">{title}</h1>
+          <div className="b-row">
+            <button
+              className="b-button b-button--primary"
+              onClick={() => liveChannel.username ? onOpenChannel(liveChannel.username) : onSelectVideo(liveChannel)}
+            >
+              Stream ansehen
+              <Icon name="arrow-right" size={20} />
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
+  if (video) {
+    return (
+      <section className="b-hero">
+        <div className="b-hero__media" aria-hidden="true">
+          <img src={video.thumbnail_url || video.thumbnailUrl || '/bg-figma.jpg'} alt="" />
+        </div>
+        <div className="b-hero__scrim" aria-hidden="true" />
+        <div className="b-hero__content">
+          <span className="b-kicker">Neu · {categoryLabel(video.category)}</span>
+          <h1 className="b-heading b-heading--800">{video.title}</h1>
+          <div className="b-row">
+            <button className="b-button b-button--primary" onClick={() => onSelectVideo(toCardVideo(video))}>
+              Video ansehen
+              <Icon name="arrow-right" size={20} />
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
+
   return (
-    <div onClick={onClick} className="video-card" style={{ width: 230 }}>
-      <div style={{ aspectRatio: '16/9', background: '#000', display: 'flex', alignItems: 'center', justifyContent: 'center', position: 'relative' }}>
-        <div style={{ background: '#0055b8', padding: '6px 12px', fontSize: 11, fontWeight: 900, color: '#fff', letterSpacing: '0.06em' }}>
-          LIVE
-        </div>
-        <div className="live-badge" style={{ position: 'absolute', top: 8, left: 8 }}>
-          LIVE
-        </div>
+    <section className="b-hero">
+      <div className="b-hero__media" aria-hidden="true">
+        <img src="/bg-figma.jpg" alt="" />
       </div>
-      <div style={{ padding: '12px 14px' }}>
-        <div style={{ fontSize: 13, fontWeight: 900, color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textTransform: 'uppercase' }}>
-          {channel.display_name || channel.username}
-        </div>
-        <div style={{ fontSize: 11, color: '#64748b', marginTop: 3, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-          {channel.live_title || 'VfL Bochum TV Live'}
-        </div>
+      <div className="b-hero__scrim" aria-hidden="true" />
+      <div className="b-hero__content">
+        <span className="b-kicker">VfL Bochum 1848</span>
+        <h1 className="b-heading b-heading--800">Unser Fußball.<br />Unsere Bilder.</h1>
+        <p className="b-copy b-copy--body b-copy--front">
+          Testspiele live, Pressekonferenzen in voller Länge, Interviews und Behind the Scenes —
+          gesammelt an einem Ort.
+        </p>
       </div>
+    </section>
+  );
+}
+
+// ── Leerzustand ───────────────────────────────────────────────────────────────
+
+function EmptyState({ authToken, search, onLogin }) {
+  if (search) {
+    return (
+      <div className="b-empty">
+        <h3 className="b-heading b-heading--500">Nichts gefunden</h3>
+        <p className="b-copy" style={{ margin: 'var(--space-2xs) auto 0' }}>
+          Für „{search}" gibt es keine Treffer. Versuch einen kürzeren Suchbegriff.
+        </p>
+      </div>
+    );
+  }
+  return (
+    <div className="b-empty">
+      <h3 className="b-heading b-heading--500">Die Mediathek ist noch leer</h3>
+      <p className="b-copy" style={{ margin: 'var(--space-2xs) auto var(--space-s)' }}>
+        {authToken
+          ? 'Lade das erste Video hoch — Testspiel, Interview oder Pressekonferenz.'
+          : 'Sobald die Redaktion Videos veröffentlicht, erscheinen sie hier.'}
+      </p>
+      {!authToken && (
+        <button className="b-button b-button--secondary b-button--s" onClick={onLogin}>
+          Als Redaktion anmelden
+        </button>
+      )}
     </div>
   );
 }
 
-// ── Featured Live Hero ────────────────────────────────────────────────────────
-function FeaturedLiveHero({ channel, onOpenChannel }) {
-  if (!channel) return null;
-  const liveStreamInfo = {
-    id: `live-obs-${channel.id || 'legacy'}`,
-    userId: channel.id,
-    username: channel.username,
-    stream_key: channel.stream_key,
-    title: channel.live_title || channel.title || `VfL Bochum TV – Live`,
-    uploader: channel.display_name || channel.username,
-    isLive: true,
-  };
+// ── Wortband ──────────────────────────────────────────────────────────────────
 
+function Marquee() {
+  const words = ['Castroper', '1848', 'Ruhrstadion', 'Anne Castroper', '1848', 'Blau-Weiß'];
+  const row = [...words, ...words, ...words, ...words];
   return (
-    <div className="live-hero">
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
-          <div className="live-badge">
-            LIVE
-          </div>
-          <span style={{ fontSize: 14, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.06em' }}>
-            VfL BOCHUM TV – FEATURED LIVE STREAM
-          </span>
-        </div>
-        {channel.username && (
-          <button onClick={() => onOpenChannel(channel.username)} className="btn-secondary" style={{ fontSize: 11 }}>
-            KANAL BESUCHEN →
-          </button>
-        )}
-      </div>
-
-      <LivePlayer liveStreamInfo={liveStreamInfo} onBack={null} />
-
-      <div style={{ marginTop: 16, display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 12 }}>
-        <div
-          onClick={() => onOpenChannel(channel.username)}
-          style={{ display: 'flex', alignItems: 'center', gap: 14, cursor: 'pointer' }}
-        >
-          <div style={{ width: 44, height: 44, background: '#0055b8', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 16, fontWeight: 900, color: '#ffffff', flexShrink: 0 }}>
-            {channel.avatar_url ? (
-              <img src={channel.avatar_url} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-            ) : (
-              (channel.display_name || channel.username || 'V')[0].toUpperCase()
-            )}
-          </div>
-          <div>
-            <h3 style={{ fontSize: 15, fontWeight: 900, color: '#ffffff', textTransform: 'uppercase', letterSpacing: '0.02em' }}>
-              {channel.live_title || channel.title || 'VfL Bochum TV Live'}
-            </h3>
-            <p style={{ fontSize: 12, color: '#64748b', marginTop: 2, fontWeight: 700 }}>
-              {channel.display_name || channel.username}
-              {channel.username && <span style={{ color: '#475569' }}> (@{channel.username})</span>}
-            </p>
-          </div>
-        </div>
+    <div className="b-marquee" aria-hidden="true">
+      <div className="b-marquee__items" style={{ '--marquee-speed': '48s' }}>
+        {row.map((w, i) => <span className="b-marquee__item" key={i}>{w}</span>)}
       </div>
     </div>
   );

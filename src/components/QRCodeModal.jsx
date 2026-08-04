@@ -1,100 +1,74 @@
-import React, { useState } from 'react';
-import { X, QrCode, Wifi, Smartphone, Copy, CheckCircle2, Server, Tv } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
+import Icon from './ui/Icon';
 
-export default function QRCodeModal({ isOpen, onClose, systemInfo }) {
+export default function QRCodeModal({ isOpen = true, onClose, systemInfo }) {
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose?.(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
 
   if (!isOpen) return null;
 
-  // DHCP Aware: Always derive exact URL from the active client connection
+  // Die URL wird aus der aktiven Verbindung abgeleitet, damit sie auch bei
+  // wechselnder DHCP-Adresse stimmt.
   const currentHost = window.location.hostname || 'localhost';
-  const currentPort = window.location.port || '5000';
-  const streamUrl = `http://${currentHost}:${currentPort}`;
+  const currentPort = window.location.port;
+  const portalUrl = `http://${currentHost}${currentPort ? `:${currentPort}` : ''}`;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(streamUrl);
+    navigator.clipboard.writeText(portalUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-[#07090e] border border-white/10 w-full max-w-md rounded-xl shadow-2xl overflow-hidden p-6 space-y-5 text-center relative">
-        
-        {/* Close Button */}
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 rounded-md text-gray-400 hover:text-white hover:bg-white/10 transition-colors"
-        >
-          <X className="w-5 h-5" />
-        </button>
-
-        {/* Header */}
-        <div className="space-y-1">
-          <div className="w-12 h-12 rounded-xl bg-blue-500/10 border border-blue-500/30 text-blue-400 flex items-center justify-center mx-auto mb-2">
-            <Wifi className="w-6 h-6" />
+    <div className="b-modal" role="dialog" aria-modal="true" aria-label="Zugriff im Netzwerk" onClick={onClose}>
+      <div className="b-modal__dialog" style={{ maxWidth: 420 }} onClick={e => e.stopPropagation()}>
+        <div className="b-modal__header">
+          <div>
+            <h2 className="b-heading b-heading--500">Im Netzwerk öffnen</h2>
+            <p className="b-meta-line__item">Handy, Tablet oder Smart-TV</p>
           </div>
-          <h2 className="text-lg font-bold text-white">Netzwerk-Zugriff</h2>
-          <p className="text-xs text-gray-400">
-            Scanne den QR-Code mit deinem Handy, um die Mediathek im lokalen Netzwerk zu öffnen.
-          </p>
-        </div>
-
-        {/* QR Code Container */}
-        <div className="p-4 bg-white rounded-xl w-48 h-48 mx-auto flex items-center justify-center shadow-xl border border-white/10">
-          <QRCodeSVG
-            value={streamUrl}
-            size={168}
-            bgColor="#ffffff"
-            fgColor="#07090e"
-            level="H"
-            includeMargin={false}
-          />
-        </div>
-
-        {/* URL Box */}
-        <div className="p-3 rounded-md bg-black/60 border border-white/10 flex items-center justify-between gap-2">
-          <span className="font-mono text-xs font-semibold text-blue-400 tracking-wide truncate">
-            {streamUrl}
-          </span>
-          <button
-            onClick={handleCopy}
-            className="p-1.5 rounded bg-white/10 hover:bg-white/20 text-white transition-colors shrink-0"
-            title="URL Kopieren"
-          >
-            {copied ? <CheckCircle2 className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+          <button type="button" className="b-button b-button--ghost b-button--s" onClick={onClose} aria-label="Schließen">
+            <Icon name="close" size={16} />
           </button>
         </div>
 
-        {/* Info */}
-        <div className="grid grid-cols-2 gap-2 text-left text-xs bg-white/[0.03] p-3 rounded-md border border-white/5 font-mono">
-          <div>
-            <span className="text-gray-500 block">Host Node:</span>
-            <span className="font-semibold text-gray-200 truncate block">
-              {systemInfo?.hostname || 'Server'}
-            </span>
+        <div className="b-modal__body">
+          <p className="b-copy">
+            Scanne den Code, um 1848TV auf einem anderen Gerät im selben Netzwerk zu öffnen.
+          </p>
+
+          <div style={{
+            background: 'var(--color-white-400)',
+            padding: 'var(--space-s)',
+            alignSelf: 'center',
+            lineHeight: 0,
+          }}>
+            <QRCodeSVG value={portalUrl} size={192} bgColor="#ffffff" fgColor="#041825" level="H" />
           </div>
-          <div>
-            <span className="text-gray-500 block">DHCP IP:</span>
-            <span className="font-semibold text-blue-400 truncate block">
-              {currentHost}
-            </span>
+
+          <div className="b-field">
+            <span className="b-label">Adresse</span>
+            <div style={{ display: 'flex', gap: 'var(--space-3xs)' }}>
+              <input className="b-input b-input--mono" readOnly value={portalUrl} />
+              <button type="button" className="b-button b-button--secondary b-button--s" onClick={handleCopy}>
+                {copied ? 'Kopiert' : 'Kopieren'}
+              </button>
+            </div>
+          </div>
+
+          <div className="b-panel b-panel--bare">
+            <div className="b-meta-line">
+              <span className="b-meta-line__item">Host {systemInfo?.hostname || 'unbekannt'}</span>
+              <span className="b-meta-line__item">IP {currentHost}</span>
+            </div>
           </div>
         </div>
-
-        {/* Instructions */}
-        <div className="flex justify-around text-xs text-gray-400 pt-1">
-          <div className="flex items-center gap-1.5">
-            <Smartphone className="w-4 h-4 text-cyan-400" />
-            <span>Handy Kamera Stream</span>
-          </div>
-          <div className="flex items-center gap-1.5">
-            <Tv className="w-4 h-4 text-blue-400" />
-            <span>Smart-TV Browser</span>
-          </div>
-        </div>
-
       </div>
     </div>
   );

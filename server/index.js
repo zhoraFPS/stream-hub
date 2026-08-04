@@ -310,6 +310,7 @@ app.post('/api/upload', requireAuth, upload.fields([{ name: 'video', maxCount: 1
 
     const user = getUserById(req.userId);
     console.log(`[Upload] ${user?.username} uploaded: ${video.title}`);
+    publishEvent('videos', { reason: 'upload', id: videoId });
     res.status(201).json({ ...video, videoUrl: `/api/videos/${videoId}/stream` });
   } catch (err) {
     console.error('[Upload] Error:', err);
@@ -327,6 +328,7 @@ app.delete('/api/videos/:id', requireAuth, (req, res) => {
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   }
   deleteVideo(req.params.id, req.userId);
+  publishEvent('videos', { reason: 'delete', id: req.params.id });
   res.json({ success: true });
 });
 
@@ -393,6 +395,7 @@ app.post('/api/internal/obs-start', (req, res) => {
         thumbnailUrl: user.avatar_url || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
       };
       console.log(`[Webhook] Stream started for user: ${user.username}`);
+      publishEvent('live', { active: true, username: user.username });
       return res.sendStatus(200);
     }
   }
@@ -414,6 +417,7 @@ app.post('/api/internal/obs-stop', (req, res) => {
         liveViewers.clear();
       }
       console.log(`[Webhook] Stream ended for user: ${user.username}`);
+      publishEvent('live', { active: false, username: user.username });
       return res.sendStatus(200);
     }
   }
@@ -422,6 +426,7 @@ app.post('/api/internal/obs-stop', (req, res) => {
     activeLiveStream = null;
     liveViewers.clear();
   }
+  publishEvent('live', { active: false });
   res.sendStatus(200);
 });
 
@@ -431,6 +436,50 @@ app.get('/api/live/status', (req, res) => {
     active: !!activeLiveStream,
     stream: activeLiveStream,
     viewers: liveViewers.size + 1
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════════
+// EVENT-STROM (Server-Sent Events)
+// ═══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * Vorher fragte jeder offene Tab alle fünf Sekunden drei Endpunkte ab — bei
+ * 500 Zuschauern rund 300 Anfragen pro Sekunde für Daten, die sich fast nie
+ * ändern. Jetzt hält der Client eine Verbindung offen und der Server meldet
+ * sich, wenn tatsächlich etwas passiert.
+ */
+const eventClients = new Set();
+
+function publishEvent(type, data = {}) {
+  if (eventClients.size === 0) return;
+  const frame = `event: ${type}\ndata: ${JSON.stringify(data)}\n\n`;
+  eventClients.forEach(client => {
+    try { client.write(frame); } catch { eventClients.delete(client); }
+  });
+}
+
+app.get('/api/events', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream; charset=utf-8',
+    'Cache-Control': 'no-cache, no-transform',
+    Connection: 'keep-alive',
+    // Verhindert, dass ein vorgelagerter nginx den Strom puffert.
+    'X-Accel-Buffering': 'no',
+  });
+  res.write(': verbunden\n\n');
+  if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+  eventClients.add(res);
+
+  // Hält Proxys davon ab, die scheinbar untätige Verbindung zu kappen.
+  const heartbeat = setInterval(() => {
+    try { res.write(': ping\n\n'); } catch { /* wird beim close aufgeräumt */ }
+  }, 25000);
+
+  req.on('close', () => {
+    clearInterval(heartbeat);
+    eventClients.delete(res);
   });
 });
 
@@ -513,7 +562,9 @@ function finishLiveStream(fileWriteStream, filename) {
         duration: 0,
       });
       console.log(`[VOD] Saved phone stream recording: ${title}`);
+      publishEvent('videos', { reason: 'recording', id: vodId });
     }
+    publishEvent('live', { active: false });
   }
 }
 
@@ -565,6 +616,7 @@ function setupWebSocket(wssInstance) {
                 startLiveSession(streamUserId, activeLiveStream.title);
               }
               console.log(`[WS] Phone stream started: ${activeLiveStream.title}`);
+              publishEvent('live', { active: true });
             } else if (data.type === 'stop') {
               if (streamUserId) {
                 updateUserLiveStatus(streamUserId, false);

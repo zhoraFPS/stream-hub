@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
 import ErrorBoundary from './components/ErrorBoundary';
 import Navbar from './components/Navbar';
 import VideoCard from './components/VideoCard';
@@ -44,7 +44,8 @@ export default function App() {
   const [videos, setVideos] = useState([]);
   const [liveChannels, setLiveChannels] = useState([]);
   const [selectedCategory, setSelectedCategory] = useState('All');
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState('');   // was im Feld steht
+  const [searchTerm, setSearchTerm] = useState('');     // wonach tatsächlich gesucht wird
   const [activeVideo, setActiveVideo] = useState(null);
   const [activeLive, setActiveLive] = useState(null);
   const [systemInfo, setSystemInfo] = useState(null);
@@ -87,7 +88,7 @@ export default function App() {
       if (!quiet) setLoading(true);
       const url = new URL('/api/videos', window.location.origin);
       if (selectedCategory && selectedCategory !== 'All') url.searchParams.append('category', selectedCategory);
-      if (searchQuery) url.searchParams.append('search', searchQuery);
+      if (searchTerm) url.searchParams.append('search', searchTerm);
       const res = await fetch(url, { headers: authHeaders() });
       if (!res.ok) throw new Error('Videos konnten nicht geladen werden.');
       setVideos(await res.json());
@@ -97,7 +98,7 @@ export default function App() {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [selectedCategory, searchQuery, authHeaders]);
+  }, [selectedCategory, searchTerm, authHeaders]);
 
   const fetchLiveChannels = useCallback(async () => {
     try {
@@ -120,12 +121,47 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  useEffect(() => { fetchVideos(); fetchLiveChannels(); }, [selectedCategory, searchQuery]);
+  // Tippen soll nicht jede Taste einzeln an den Server schicken.
+  useEffect(() => {
+    const id = setTimeout(() => setSearchTerm(searchQuery.trim()), 300);
+    return () => clearTimeout(id);
+  }, [searchQuery]);
+
+  useEffect(() => { fetchVideos(); }, [selectedCategory, searchTerm]);
+
+  // Der Live-Status hängt nicht am Filter — einmal beim Start, danach per Ereignis.
+  useEffect(() => { fetchLiveChannels(); }, []);
+
+  // Die Abrufer hängen an Kategorie und Suchbegriff. Über eine Ref bleibt der
+  // Ereignisstrom davon unberührt und verbindet sich nicht bei jedem Tastendruck neu.
+  const refreshRef = useRef({ fetchVideos, fetchLiveChannels });
+  useEffect(() => {
+    refreshRef.current = { fetchVideos, fetchLiveChannels };
+  }, [fetchVideos, fetchLiveChannels]);
+
+  const [feedConnected, setFeedConnected] = useState(false);
 
   useEffect(() => {
-    const interval = setInterval(() => { fetchVideos(true); fetchLiveChannels(); }, 5000);
+    if (typeof EventSource === 'undefined') return undefined;
+
+    const source = new EventSource('/api/events');
+    source.onopen = () => setFeedConnected(true);
+    source.onerror = () => setFeedConnected(false); // EventSource verbindet selbst neu
+    source.addEventListener('videos', () => refreshRef.current.fetchVideos(true));
+    source.addEventListener('live', () => refreshRef.current.fetchLiveChannels());
+
+    return () => { source.close(); setFeedConnected(false); };
+  }, []);
+
+  // Sicherheitsnetz: nur solange der Ereignisstrom nicht steht.
+  useEffect(() => {
+    if (feedConnected) return undefined;
+    const interval = setInterval(() => {
+      refreshRef.current.fetchVideos(true);
+      refreshRef.current.fetchLiveChannels();
+    }, 15000);
     return () => clearInterval(interval);
-  }, [fetchVideos, fetchLiveChannels]);
+  }, [feedConnected]);
 
   // ── Navigation ──────────────────────────────────────────────────────────────
   const goHome = () => {
@@ -203,7 +239,7 @@ export default function App() {
   };
 
   const isLiveActive = !!activeLive || liveChannels.length > 0;
-  const isFiltered = selectedCategory !== 'All' || !!searchQuery;
+  const isFiltered = selectedCategory !== 'All' || !!searchTerm;
 
   const featuredLiveChannel = liveChannels[0] || (activeLive?.username ? activeLive : null);
   const featuredVideo = !isFiltered ? videos[0] : null;
@@ -398,9 +434,9 @@ export default function App() {
         {/* Mediathek */}
         <Reveal as="section" className="b-section">
           <SectionTitle
-            title={isFiltered ? (searchQuery ? 'Suchergebnisse' : categoryLabel(selectedCategory)) : 'Neueste Videos'}
+            title={isFiltered ? (searchTerm ? 'Suchergebnisse' : categoryLabel(selectedCategory)) : 'Neueste Videos'}
             count={isFiltered && !loading ? videos.length : null}
-            action={isFiltered ? { label: 'Filter zurücksetzen', onClick: () => { setSelectedCategory('All'); setSearchQuery(''); } } : null}
+            action={isFiltered ? { label: 'Filter zurücksetzen', onClick: () => { setSelectedCategory('All'); setSearchQuery(''); setSearchTerm(''); } } : null}
           >
             <Chips
               items={CATEGORY_FILTERS}
@@ -416,7 +452,7 @@ export default function App() {
           ) : error ? (
             <div className="b-notice b-notice--error">{error}</div>
           ) : videos.length === 0 ? (
-            <EmptyState authToken={authToken} search={searchQuery} onLogin={() => setCurrentPage('auth')} />
+            <EmptyState authToken={authToken} search={searchTerm} onLogin={() => setCurrentPage('auth')} />
           ) : isFiltered ? (
             <div className="b-grid">
               {videos.map(video => (

@@ -1,6 +1,8 @@
 import React, { useRef, useState, useEffect, useCallback } from 'react';
-import Hls from 'hls.js';
 import Icon from './ui/Icon';
+
+// hls.js wiegt minifiziert 530 kB und wird nur gebraucht, wenn tatsächlich ein
+// Stream läuft. Deshalb erst beim Abspielen laden, nicht beim Seitenaufruf.
 
 // ─── HLS-Player für OBS-Streams ──────────────────────────────────────────────
 function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
@@ -11,6 +13,7 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
   const [showControls, setShowControls] = useState(true);
   const [isBuffering, setIsBuffering] = useState(true);
   const [latency, setLatency] = useState(null);
+  const [loadError, setLoadError] = useState(null);
   const hideTimer = useRef(null);
   const containerRef = useRef(null);
 
@@ -18,10 +21,32 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
     const video = videoRef.current;
     if (!video || !hlsUrl) return;
 
+    let cancelled = false;
+    let hls = null;
+    let lagTimer = null;
+
     setIsBuffering(true);
 
-    if (Hls.isSupported()) {
-      const hls = new Hls({
+    (async () => {
+      const { default: Hls } = await import('hls.js');
+      if (cancelled || !videoRef.current) return;
+
+      if (!Hls.isSupported()) {
+        // Safari spielt HLS nativ ab.
+        if (video.canPlayType('application/vnd.apple.mpegurl')) {
+          video.src = hlsUrl;
+          video.muted = true;
+          video.play()
+            .then(() => { setIsPlaying(true); setIsBuffering(false); })
+            .catch(() => setIsBuffering(false));
+        } else {
+          setIsBuffering(false);
+          setLoadError('Dieser Browser kann den Live-Stream nicht abspielen.');
+        }
+        return;
+      }
+
+      hls = new Hls({
         lowLatencyMode: true,
         liveSyncDuration: 1.0,
         liveMaxLatencyDuration: 3.0,
@@ -64,7 +89,7 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
         }
       });
 
-      const lagTimer = setInterval(() => {
+      lagTimer = setInterval(() => {
         const v = videoRef.current;
         if (!v || v.paused) return;
         if (hls.latency > 5) {
@@ -75,16 +100,19 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
         }
         if (hls.latency != null) setLatency(Math.round(hls.latency * 10) / 10);
       }, 2000);
+    })().catch(() => {
+      if (!cancelled) {
+        setIsBuffering(false);
+        setLoadError('Der Player konnte nicht geladen werden. Lade die Seite neu.');
+      }
+    });
 
-      return () => {
-        clearInterval(lagTimer);
-        hls.destroy();
-      };
-    } else if (video.canPlayType('application/vnd.apple.mpegurl')) {
-      video.src = hlsUrl;
-      video.muted = true;
-      video.play().then(() => { setIsPlaying(true); setIsBuffering(false); }).catch(() => setIsBuffering(false));
-    }
+    return () => {
+      cancelled = true;
+      if (lagTimer) clearInterval(lagTimer);
+      if (hls) { try { hls.destroy(); } catch {} }
+      hlsRef.current = null;
+    };
   }, [hlsUrl]);
 
   useEffect(() => { if (videoRef.current) videoRef.current.muted = isMuted; }, [isMuted]);
@@ -151,14 +179,20 @@ function HLSPlayer({ hlsUrl, isMuted, setIsMuted, isPlaying, setIsPlaying }) {
         onPlaying={() => { setIsBuffering(false); setIsPlaying(true); }}
       />
 
-      {isBuffering && (
+      {(isBuffering || loadError) && (
         <div style={{
           position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column',
           alignItems: 'center', justifyContent: 'center', gap: 'var(--space-2xs)',
-          background: 'rgba(4, 24, 37, .7)',
+          background: 'rgba(4, 24, 37, .7)', padding: 'var(--space-s)', textAlign: 'center',
         }}>
-          <div className="b-spinner" />
-          <span className="b-kicker">Stream wird geladen</span>
+          {loadError ? (
+            <div className="b-notice b-notice--error">{loadError}</div>
+          ) : (
+            <>
+              <div className="b-spinner" />
+              <span className="b-kicker">Stream wird geladen</span>
+            </>
+          )}
         </div>
       )}
 

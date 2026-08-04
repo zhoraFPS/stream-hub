@@ -8,7 +8,7 @@ import http from 'http';
 import https from 'https';
 import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
-import { randomUUID } from 'crypto';
+import { randomUUID, randomBytes } from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ensureCertsExist } from './generate-cert.js';
@@ -23,7 +23,40 @@ import {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const JWT_SECRET = process.env.JWT_SECRET || 'streamhub_jwt_secret_change_in_prod_2024';
+/**
+ * Token-Signaturschlüssel.
+ *
+ * Vorher stand hier ein fest eingebauter Fallback. Wer den Quelltext kannte,
+ * konnte damit Tokens für jeden beliebigen Account signieren — im Docker ohne
+ * gesetzte JWT_SECRET-Variable also praktisch immer.
+ *
+ * Reihenfolge: Umgebungsvariable, sonst ein einmalig erzeugter Schlüssel in
+ * server/data. Die Datei liegt im gemounteten Volume, dadurch überleben
+ * Sitzungen einen Container-Neustart.
+ */
+function resolveJwtSecret() {
+  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+
+  const secretPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'data', '.jwt-secret');
+  try {
+    if (fs.existsSync(secretPath)) {
+      const stored = fs.readFileSync(secretPath, 'utf8').trim();
+      if (stored) return stored;
+    }
+    const generated = randomBytes(48).toString('hex');
+    fs.mkdirSync(path.dirname(secretPath), { recursive: true });
+    fs.writeFileSync(secretPath, generated, { mode: 0o600 });
+    console.warn('[Auth] JWT_SECRET ist nicht gesetzt. Schlüssel erzeugt in server/data/.jwt-secret');
+    return generated;
+  } catch (err) {
+    // Kein beschreibbares Volume: lieber flüchtig als vorhersagbar. Nach einem
+    // Neustart müssen sich dann alle neu anmelden.
+    console.warn('[Auth] Schlüssel konnte nicht gespeichert werden, nutze flüchtigen Schlüssel:', err.message);
+    return randomBytes(48).toString('hex');
+  }
+}
+
+const JWT_SECRET = resolveJwtSecret();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -426,7 +459,24 @@ const wssHttp = new WebSocketServer({ server: httpServer });
 let activeLiveStream = null;
 let publisherSocket = null;
 let liveViewers = new Set();
+
+/**
+ * Puffer für den Handy-Stream.
+ *
+ * Der erste Chunk trägt den WebM-Header — ohne ihn kann ein später
+ * dazugekommener Zuschauer den Stream nicht dekodieren, deshalb liegt er
+ * separat und bleibt erhalten. Alles Weitere ist nur Anlauf und rollt durch:
+ * vorher wuchs das Array unbegrenzt weiter, was bei einem 90-Minuten-Stream
+ * mit 3 Mbit/s auf rund 2 GB im Arbeitsspeicher hinauslief.
+ */
+const LIVE_CHUNK_BUFFER = 10;
+let liveInitChunk = null;
 let liveChunks = [];
+
+function resetLiveBuffer() {
+  liveInitChunk = null;
+  liveChunks = [];
+}
 
 function broadcastToAll(message) {
   const jsonStr = typeof message === 'string' ? message : JSON.stringify(message);
@@ -447,6 +497,7 @@ function finishLiveStream(fileWriteStream, filename) {
     const userId = activeLiveStream.userId;
     activeLiveStream = null;
     liveViewers.clear();
+    resetLiveBuffer();
 
     // Save as VOD in SQLite if we have a user
     if (userId) {
@@ -480,7 +531,12 @@ function setupWebSocket(wssInstance) {
       ws.on('message', (message, isBinary) => {
         if (isBinary) {
           try { fileWriteStream.write(message); } catch {}
-          liveChunks.push(message);
+          if (!liveInitChunk) {
+            liveInitChunk = message;
+          } else {
+            liveChunks.push(message);
+            if (liveChunks.length > LIVE_CHUNK_BUFFER) liveChunks.shift();
+          }
           liveViewers.forEach(viewer => { if (viewer.readyState === 1) viewer.send(message); });
         } else {
           try {
@@ -503,7 +559,7 @@ function setupWebSocket(wssInstance) {
                 views: 1,
                 thumbnailUrl: 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
               };
-              liveChunks = [];
+              resetLiveBuffer();
               if (streamUserId) {
                 updateUserLiveStatus(streamUserId, true, activeLiveStream.title);
                 startLiveSession(streamUserId, activeLiveStream.title);
@@ -533,11 +589,10 @@ function setupWebSocket(wssInstance) {
 
     } else if (url.includes('/live/watch')) {
       liveViewers.add(ws);
-      if (activeLiveStream && liveChunks.length > 0 && ws.readyState === 1) {
-        ws.send(liveChunks[0]);
-        liveChunks.slice(-10).forEach((chunk, i) => {
-          if (i > 0 && ws.readyState === 1) ws.send(chunk);
-        });
+      // Header zuerst, dann der gepufferte Anlauf — sonst startet der Decoder nicht.
+      if (activeLiveStream && liveInitChunk && ws.readyState === 1) {
+        ws.send(liveInitChunk);
+        liveChunks.forEach(chunk => { if (ws.readyState === 1) ws.send(chunk); });
       }
       ws.on('message', (message) => {
         try {

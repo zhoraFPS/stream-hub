@@ -29,20 +29,33 @@ export default function VideoPlayer({
   }, [video.id]);
 
   useEffect(() => {
-    if (!videoRef.current) return;
+    // Aufbau um einen Frame verzögert: React ruft Effekte im Entwicklungsmodus
+    // doppelt auf, und Plyrs destroy() räumt asynchron auf — die zweite Instanz
+    // wurde dadurch vom Aufräumen der ersten wieder abgerissen und der Player
+    // blieb unsichtbar. Wird vor dem Frame abgebrochen, entsteht gar keine.
+    let cancelled = false;
+    let player = null;
 
-    const player = new Plyr(videoRef.current, {
-      autoplay: true,
-      controls: ['play-large', 'play', 'progress', 'current-time', 'duration',
-                 'mute', 'volume', 'settings', 'pip', 'fullscreen'],
-      settings: ['speed'],
-      speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
-      tooltips: { controls: true, seek: true },
-      keyboard: { focused: true, global: true },
+    const frame = requestAnimationFrame(() => {
+      if (cancelled || !videoRef.current) return;
+      player = new Plyr(videoRef.current, {
+        autoplay: true,
+        controls: ['play-large', 'play', 'progress', 'current-time', 'duration',
+                   'mute', 'volume', 'settings', 'pip', 'fullscreen'],
+        settings: ['speed'],
+        speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
+        tooltips: { controls: true, seek: true },
+        keyboard: { focused: true, global: true },
+      });
+      playerRef.current = player;
     });
 
-    playerRef.current = player;
-    return () => { try { player.destroy(); } catch {} };
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      if (player) { try { player.destroy(); } catch {} }
+      playerRef.current = null;
+    };
   }, [streamUrl]);
 
   const handleCopyLink = () => {

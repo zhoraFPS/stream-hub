@@ -22,6 +22,9 @@ npm-debug.log*
 .DS_Store
 Thumbs.db
 
+# Secrets
+server/data/.jwt-secret
+
 # Database and Certificates
 server/data/*.db
 server/data/*.db-shm

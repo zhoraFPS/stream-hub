@@ -1,20 +1,35 @@
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, lazy, Suspense } from 'react';
 import ErrorBoundary from './components/ErrorBoundary';
 import Navbar from './components/Navbar';
 import VideoCard from './components/VideoCard';
-import VideoPlayer from './components/VideoPlayer';
-import LivePlayer from './components/LivePlayer';
-import LiveStudioPage from './components/LiveStudioPage';
-import UploadModal from './components/UploadModal';
-import QRCodeModal from './components/QRCodeModal';
-import AuthPage from './components/AuthPage';
-import ChannelPage from './components/ChannelPage';
-import SettingsPage from './components/SettingsPage';
 import SectionTitle from './components/ui/SectionTitle';
 import Chips from './components/ui/Chips';
 import Reveal from './components/ui/Reveal';
 import Icon from './components/ui/Icon';
 import { CATEGORIES, CATEGORY_FILTERS, categoryLabel } from './constants/categories';
+
+/**
+ * Alles, was nicht zur Startseite gehört, wird erst beim Aufruf geladen.
+ * Der Player zieht Plyr nach, das Live-Bild hls.js, das Netzwerk-Fenster
+ * den QR-Code-Generator — zusammen der Großteil des früheren Bundles.
+ */
+const VideoPlayer     = lazy(() => import('./components/VideoPlayer'));
+const LivePlayer      = lazy(() => import('./components/LivePlayer'));
+const LiveStudioPage  = lazy(() => import('./components/LiveStudioPage'));
+const UploadModal     = lazy(() => import('./components/UploadModal'));
+const QRCodeModal     = lazy(() => import('./components/QRCodeModal'));
+const AuthPage        = lazy(() => import('./components/AuthPage'));
+const ChannelPage     = lazy(() => import('./components/ChannelPage'));
+const SettingsPage    = lazy(() => import('./components/SettingsPage'));
+
+function PageLoader() {
+  return (
+    <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-2xl)' }}>
+      <div className="b-spinner" />
+      <span className="b-visually-hidden">Wird geladen</span>
+    </div>
+  );
+}
 
 export default function App() {
   // ── Seitenzustand ───────────────────────────────────────────────────────────
@@ -223,7 +238,7 @@ export default function App() {
   };
 
   const modals = (
-    <>
+    <Suspense fallback={null}>
       {isUploadOpen && (
         <UploadModal
           isOpen={isUploadOpen}
@@ -234,7 +249,7 @@ export default function App() {
         />
       )}
       {isQROpen && <QRCodeModal isOpen onClose={() => setIsQROpen(false)} systemInfo={systemInfo} />}
-    </>
+    </Suspense>
   );
 
   // ══════════════════════════════════════════════════════════════════════════
@@ -244,7 +259,9 @@ export default function App() {
   if (currentPage === 'auth') {
     return (
       <ErrorBoundary>
-        <AuthPage onAuth={handleAuth} onBack={goHome} />
+        <Suspense fallback={<PageLoader />}>
+          <AuthPage onAuth={handleAuth} onBack={goHome} />
+        </Suspense>
       </ErrorBoundary>
     );
   }
@@ -254,7 +271,9 @@ export default function App() {
       <ErrorBoundary>
         <Navbar {...navProps} activePage="live" />
         <div className="b-page b-page--wide">
-          <LivePlayer liveStreamInfo={activeLive} onBack={goHome} />
+          <Suspense fallback={<PageLoader />}>
+            <LivePlayer liveStreamInfo={activeLive} onBack={goHome} />
+          </Suspense>
         </div>
       </ErrorBoundary>
     );
@@ -265,15 +284,17 @@ export default function App() {
       <ErrorBoundary>
         <Navbar {...navProps} />
         <div className="b-page b-page--wide">
-          <VideoPlayer
-            video={activeVideo}
-            allVideos={videos}
-            onSelectVideo={openVideo}
-            onOpenChannel={openChannel}
-            onBack={goHome}
-            systemInfo={systemInfo}
-            authToken={authToken}
-          />
+          <Suspense fallback={<PageLoader />}>
+            <VideoPlayer
+              video={activeVideo}
+              allVideos={videos}
+              onSelectVideo={openVideo}
+              onOpenChannel={openChannel}
+              onBack={goHome}
+              systemInfo={systemInfo}
+              authToken={authToken}
+            />
+          </Suspense>
         </div>
       </ErrorBoundary>
     );
@@ -284,12 +305,14 @@ export default function App() {
       <ErrorBoundary>
         <Navbar {...navProps} activePage="studio" />
         <div className="b-page b-page--wide">
-          <LiveStudioPage
-            onBack={goHome}
-            systemInfo={systemInfo}
-            authToken={authToken}
-            currentUser={currentUser}
-          />
+          <Suspense fallback={<PageLoader />}>
+            <LiveStudioPage
+              onBack={goHome}
+              systemInfo={systemInfo}
+              authToken={authToken}
+              currentUser={currentUser}
+            />
+          </Suspense>
         </div>
       </ErrorBoundary>
     );
@@ -300,13 +323,15 @@ export default function App() {
       <ErrorBoundary>
         <Navbar {...navProps} />
         <div className="b-page b-page--wide">
-          <ChannelPage
-            username={channelUsername}
-            currentUser={currentUser}
-            authToken={authToken}
-            onBack={goHome}
-            onSelectVideo={openVideo}
-          />
+          <Suspense fallback={<PageLoader />}>
+            <ChannelPage
+              username={channelUsername}
+              currentUser={currentUser}
+              authToken={authToken}
+              onBack={goHome}
+              onSelectVideo={openVideo}
+            />
+          </Suspense>
         </div>
         {modals}
       </ErrorBoundary>
@@ -318,12 +343,14 @@ export default function App() {
       <ErrorBoundary>
         <Navbar {...navProps} />
         <div className="b-page">
-          <SettingsPage
-            currentUser={currentUser}
-            authToken={authToken}
-            onBack={goHome}
-            onUserUpdate={setCurrentUser}
-          />
+          <Suspense fallback={<PageLoader />}>
+            <SettingsPage
+              currentUser={currentUser}
+              authToken={authToken}
+              onBack={goHome}
+              onUserUpdate={setCurrentUser}
+            />
+          </Suspense>
         </div>
       </ErrorBoundary>
     );

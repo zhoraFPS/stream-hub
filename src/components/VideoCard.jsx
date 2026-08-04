@@ -1,7 +1,8 @@
 import React from 'react';
 import Media from './ui/Media';
 import { formatDuration, formatDate, formatViews } from '../utils/formatters';
-import { categoryLabel, matchLabel } from '../constants/categories';
+import Icon from './ui/Icon';
+import { categoryLabel, matchLabel, accessLabel } from '../constants/categories';
 
 /**
  * Video-Kachel nach dem b-card-article Muster: transparente Fläche,
@@ -15,6 +16,8 @@ export default function VideoCard({ video, onSelectVideo, onDeleteVideo, compact
   const isLive = !!video.isLive;
   const isPreparing = video.transcode_status === 'pending' || video.transcode_status === 'processing';
   const match = matchLabel(video);
+  // Kennzeichnung für die spaetere Paywall — noch ohne Wirkung.
+  const gesperrt = video.access_level && video.access_level !== 'public';
 
   return (
     <article className={`b-card-article${compact ? ' b-card-article--compact' : ''}`}>
@@ -42,6 +45,12 @@ export default function VideoCard({ video, onSelectVideo, onDeleteVideo, compact
           )}
           {video.visibility === 'internal' && (
             <span className="b-badge b-badge--internal">Intern</span>
+          )}
+          {gesperrt && (
+            <span className="b-badge b-badge--locked" title={accessLabel(video.access_level)}>
+              <Icon name="lock" size={12} />
+              {accessLabel(video.access_level)}
+            </span>
           )}
         </div>
 

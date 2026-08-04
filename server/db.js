@@ -146,6 +146,20 @@ function migrate() {
   // public = für alle sichtbar, internal = nur für angemeldete Redaktion
   add('visibility', "TEXT DEFAULT 'public'");
 
+  /*
+   * Zugangsstufe für die spätere Paywall: public | registered | subscriber.
+   *
+   * Bewusst NICHT durchgesetzt. Wer darf, entscheidet später die VfL.ID —
+   * solange die Schnittstelle nicht steht, wäre jede Regel hier geraten. Das
+   * Feld wird gepflegt und angezeigt, damit die Redaktion ihre Einstufung
+   * schon jetzt hinterlegen kann und beim Anschluss nichts nachgetragen
+   * werden muss.
+   *
+   * Nicht zu verwechseln mit `visibility`: das ist die Redaktionsachse
+   * (Rohmaterial vs. veröffentlicht) und wird sehr wohl durchgesetzt.
+   */
+  add('access_level', "TEXT DEFAULT 'public'");
+
   // Einordnung ins Archiv. Alle optional — ein Interview gehört zu keinem
   // Spieltag, ein Trainingslager-Vlog zu keinem Wettbewerb.
   add('team', "TEXT DEFAULT ''");         // Profis, Frauen, U19, …
@@ -257,6 +271,9 @@ export function createUser({ username, email, passwordHash, role }) {
 
 export const ROLES = ['viewer', 'editor', 'admin'];
 
+/** Zugangsstufen der späteren Paywall. Wird gepflegt, aber nicht durchgesetzt. */
+export const ACCESS_LEVELS = ['public', 'registered', 'subscriber'];
+
 /** Rangfolge, damit sich Rechte vergleichen lassen statt aufzuzählen. */
 const RANK = { viewer: 0, editor: 1, admin: 2 };
 
@@ -342,18 +359,19 @@ export function safeUser(user) {
 
 export function createVideo({
   id, userId, title, description, filename, thumbnailUrl, category, duration,
-  transcodeStatus, visibility, team, competition, season, matchday, tags,
+  transcodeStatus, visibility, accessLevel, team, competition, season, matchday, tags,
 }) {
   getDb().prepare(`
     INSERT INTO videos (
       id, user_id, title, description, filename, thumbnail_url, category, duration,
-      transcode_status, visibility, team, competition, season, matchday, tags
+      transcode_status, visibility, access_level, team, competition, season, matchday, tags
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, userId, title, description, filename, thumbnailUrl || '',
     category || 'General', duration || 0, transcodeStatus || 'skipped',
     visibility === 'internal' ? 'internal' : 'public',
+    ACCESS_LEVELS.includes(accessLevel) ? accessLevel : 'public',
     team || '', competition || '', season || '',
     Number.isFinite(Number(matchday)) ? Number(matchday) || 0 : 0,
     tags || ''
@@ -613,7 +631,8 @@ export function updateVideo(id, felder = {}) {
       title       = COALESCE(?, title),
       description = COALESCE(?, description),
       category    = COALESCE(?, category),
-      visibility  = COALESCE(?, visibility),
+      visibility   = COALESCE(?, visibility),
+      access_level = COALESCE(?, access_level),
       team        = COALESCE(?, team),
       competition = COALESCE(?, competition),
       season      = COALESCE(?, season),
@@ -625,6 +644,7 @@ export function updateVideo(id, felder = {}) {
     felder.description ?? null,
     felder.category ?? null,
     felder.visibility === 'internal' || felder.visibility === 'public' ? felder.visibility : null,
+    ACCESS_LEVELS.includes(felder.accessLevel) ? felder.accessLevel : null,
     felder.team ?? null,
     felder.competition ?? null,
     felder.season ?? null,

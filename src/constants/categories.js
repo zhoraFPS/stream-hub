@@ -17,7 +17,32 @@ export const CATEGORIES = [
   { value: 'Training',         label: 'Training' },
   { value: 'Hinter_Kulissen',  label: 'Behind the Scenes' },
   { value: 'News',             label: 'News' },
+  { value: 'Podcast',          label: 'Podcast' },
+  { value: 'Spielerportrait',  label: 'Spielerportraits' },
+  { value: 'eSports',          label: 'eSports' },
+  { value: 'Historie',         label: 'Historisches Archiv' },
 ];
+
+/**
+ * Zugangsstufen der späteren Paywall.
+ *
+ * Wird gepflegt und angezeigt, aber **nicht durchgesetzt** — wer welche Stufe
+ * hat, entscheidet später die VfL.ID. Solange deren Schnittstelle nicht steht,
+ * wäre jede Regel hier geraten. Die Redaktion kann ihre Einstufung trotzdem
+ * schon hinterlegen, dann muss beim Anschluss nichts nachgetragen werden.
+ *
+ * Nicht zu verwechseln mit der Sichtbarkeit: die trennt Rohmaterial von
+ * Veröffentlichtem und wird sehr wohl durchgesetzt.
+ */
+export const ACCESS_LEVELS = [
+  { value: 'public',     label: 'Frei',       hint: 'Für alle ohne Anmeldung.' },
+  { value: 'registered', label: 'Angemeldet', hint: 'Später: kostenlose VfL.ID nötig.' },
+  { value: 'subscriber', label: 'Abo',        hint: 'Später: bezahltes Abo nötig.' },
+];
+
+export function accessLabel(value) {
+  return ACCESS_LEVELS.find(a => a.value === value)?.label || 'Frei';
+}
 
 /** Chips inklusive „Alle" — für Filterleisten. */
 export const CATEGORY_FILTERS = [{ value: 'All', label: 'Alle' }, ...CATEGORIES];

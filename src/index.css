@@ -380,6 +380,20 @@ ul, ol { list-style: none; }
 .b-badge--prepare  { bottom: 0; left: 0; background: var(--color-front); color: var(--color-surface); }
 /* Oben links — oben rechts liegt die Löschen-Schaltfläche. */
 .b-badge--internal { top: 0; left: 0; background: var(--color-blue-royal-400); color: var(--color-white-400); }
+
+/* Kennzeichnung der späteren Zugangsstufe. Sitzt neben der Dauer, damit sie
+   nicht mit „Intern" kollidiert — die beiden können zusammen auftreten. */
+.b-badge--locked {
+  bottom: 0;
+  right: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--color-front);
+  color: var(--color-surface);
+}
+/* Steht schon eine Dauer rechts unten, rückt das Schloss darüber. */
+.b-badge--duration ~ .b-badge--locked { bottom: auto; top: 0; right: 0; }
 .b-badge--static   { position: static; display: inline-block; }
 
 .b-card-article__delete {

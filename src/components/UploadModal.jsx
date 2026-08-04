@@ -12,7 +12,7 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
 
   // Die Angaben liegen gebündelt, weil VideoMetaFields sie so erwartet.
   const [meta, setMeta] = useState({
-    title: '', description: '', category: CATEGORIES[0].value, visibility: 'public',
+    title: '', description: '', category: CATEGORIES[0].value, visibility: 'public', accessLevel: 'public',
     team: '', competition: '', season: '', matchday: '', tags: 'VfL Bochum',
   });
   const setzen = (name, wert) => setMeta(m => ({ ...m, [name]: wert }));
@@ -94,6 +94,7 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
     formData.append('description', meta.description);
     formData.append('category', meta.category);
     formData.append('visibility', meta.visibility);
+    formData.append('accessLevel', meta.accessLevel);
     formData.append('team', meta.team);
     formData.append('competition', meta.competition);
     formData.append('season', meta.season);

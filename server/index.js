@@ -698,7 +698,7 @@ app.get('/api/videos/:id/stream', optionalAuth, (req, res) => {
 app.post('/api/upload', requireRole('editor'), upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]), (req, res) => {
   try {
     const {
-      title, description, category, duration, customThumbnailData, visibility,
+      title, description, category, duration, customThumbnailData, visibility, accessLevel,
       team, competition, season, matchday,
     } = req.body;
     const videoFile = req.files?.['video']?.[0];
@@ -726,7 +726,7 @@ app.post('/api/upload', requireRole('editor'), upload.fields([{ name: 'video', m
       category: category || 'General',
       duration: parseFloat(duration) || 0,
       transcodeStatus: transcodingAvailable ? 'pending' : 'skipped',
-      visibility,
+      visibility, accessLevel,
       team, competition, season, matchday,
     });
 

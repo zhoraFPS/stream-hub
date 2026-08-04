@@ -14,6 +14,7 @@ const PATHS = {
   'close':          'M6 6l12 12M18 6L6 18',
   'play':           'M7 4l13 8-13 8V4z',
   'search':         'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16zM21 21l-4.35-4.35',
+  'lock':           'M6 10V7a6 6 0 0 1 12 0v3M4 10h16v11H4z',
 };
 
 export default function Icon({ name, size = 24, strokeWidth = 2, ...rest }) {

@@ -17,6 +17,7 @@ export default function EditVideoModal({ video, authToken, onClose, onSaved }) {
     description: video.description || '',
     category: video.category && video.category !== 'General' ? video.category : CATEGORIES[0].value,
     visibility: video.visibility === 'internal' ? 'internal' : 'public',
+    accessLevel: video.access_level || 'public',
     team: video.team || '',
     competition: video.competition || '',
     season: video.season || '',

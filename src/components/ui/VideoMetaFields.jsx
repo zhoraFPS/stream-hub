@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  CATEGORIES, TEAMS, COMPETITIONS, MAX_MATCHDAY, recentSeasons,
+  CATEGORIES, TEAMS, COMPETITIONS, MAX_MATCHDAY, recentSeasons, ACCESS_LEVELS,
 } from '../../constants/categories';
 
 /**
@@ -97,6 +97,27 @@ export default function VideoMetaFields({ werte, setzen, idPrefix = 'video' }) {
           </div>
         </div>
       </fieldset>
+
+      <div className="b-field">
+        <span className="b-label">Zugang</span>
+        <div className="b-chips">
+          {ACCESS_LEVELS.map(stufe => (
+            <button
+              key={stufe.value}
+              type="button"
+              className={`b-chip${(werte.accessLevel || 'public') === stufe.value ? ' --is-active' : ''}`}
+              aria-pressed={(werte.accessLevel || 'public') === stufe.value}
+              onClick={() => setzen('accessLevel', stufe.value)}
+            >
+              <span className="b-chip__label">{stufe.label}</span>
+            </button>
+          ))}
+        </div>
+        <p className="b-copy" style={{ marginTop: 'var(--space-3xs)' }}>
+          {ACCESS_LEVELS.find(s => s.value === (werte.accessLevel || 'public'))?.hint}
+          {' '}Noch ohne Wirkung — greift erst, wenn die VfL.ID angebunden ist.
+        </p>
+      </div>
 
       <div className="b-field">
         <span className="b-label">Sichtbarkeit</span>

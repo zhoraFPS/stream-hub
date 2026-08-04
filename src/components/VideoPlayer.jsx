@@ -5,7 +5,7 @@ import EditVideoModal from './EditVideoModal';
 import SectionTitle from './ui/SectionTitle';
 import Icon from './ui/Icon';
 import { formatDate, formatTimeAgo, formatViews } from '../utils/formatters';
-import { categoryLabel } from '../constants/categories';
+import { categoryLabel, accessLabel } from '../constants/categories';
 import { allows, subscribeConsent } from '../utils/consent';
 import { loadCastSdk, castMedia } from '../utils/cast';
 
@@ -279,6 +279,17 @@ export default function VideoPlayer({
           </div>
 
           {castFehler && <div className="b-notice b-notice--error">{castFehler}</div>}
+
+          {/* Platzhalter der späteren Paywall. Bewusst nur ein Hinweis: die
+              Stufe wird gepflegt, aber noch nicht durchgesetzt — wer Zugang
+              hat, entscheidet später die VfL.ID. */}
+          {video.access_level && video.access_level !== 'public' && (
+            <div className="b-notice b-notice--info">
+              <strong>{accessLabel(video.access_level)}</strong> — dieses Video ist für die
+              spätere Paywall eingestuft. Solange die VfL.ID nicht angebunden ist, bleibt es
+              frei abspielbar.
+            </div>
+          )}
 
           {isPreparing && (
             <div className="b-notice b-notice--info">

@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Logo from './ui/Logo';
 import Icon from './ui/Icon';
+import { PRESENTING_SPONSOR } from '../constants/sponsors';
 
 /**
  * Kopfzeile nach dem b-header Muster: Logo links, Uppercase-Navigation,
@@ -105,6 +106,24 @@ export default function Navbar({
       </div>
 
       <div className="b-header__actions">
+        {/* Presenting-Sponsor wie in der Kopfzeile von vfl1848.tv. Erst ab
+            Tablet-Breite, darunter fehlt der Platz — im Fuß steht er ohnehin. */}
+        {PRESENTING_SPONSOR && (
+          <a
+            className="b-presenting b-hide-narrow"
+            href={PRESENTING_SPONSOR.url}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            <span className="b-presenting__label">präsentiert von</span>
+            <img
+              className="b-sponsor__logo b-presenting__logo"
+              src={PRESENTING_SPONSOR.logo}
+              alt={PRESENTING_SPONSOR.name}
+            />
+          </a>
+        )}
+
         {systemInfo && (
           <button type="button" onClick={onOpenQR} className="b-button b-button--ghost b-button--s b-hide-narrow">
             {systemInfo.localIp || 'Netzwerk'}

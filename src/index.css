@@ -486,11 +486,8 @@ ul, ol { list-style: none; }
   min-width: 0;
 }
 
-/* Angemeldet stehen hier bis zu drei Schaltflächen. Auf schmalen Geräten
-   weicht zuerst die Beiwerk-Information, damit die Leiste nicht aus dem
-   Bild läuft — Wichtiges bleibt erreichbar. */
-.b-hide-narrow { display: none; }
-@media (min-width: 768px) { .b-hide-narrow { display: inline-flex; } }
+/* .b-hide-narrow steht bei den Utilities am Dateiende — dort gewinnt es gegen
+   die Anzeige-Regeln der Komponenten, die es ausblenden soll. */
 
 /* ── User-Menü ─────────────────────────────────────────────────────────── */
 
@@ -835,6 +832,68 @@ select.b-input option { background: var(--color-surface-alternate); color: var(-
 @media (min-width: 768px)  { .b-footer__base { padding-inline: var(--page-padding-x-tablet); } }
 @media (min-width: 1280px) { .b-footer__base { padding-inline: var(--page-padding-x-desktop); } }
 
+/* ── Sponsoren ─────────────────────────────────────────────────────────── */
+
+.b-sponsors { border-bottom: 1px solid var(--color-line); }
+
+.b-sponsors__inner {
+  padding: var(--space-m) var(--page-padding-x-phone);
+  max-width: 1920px;
+  margin-inline: auto;
+}
+@media (min-width: 768px)  { .b-sponsors__inner { padding-inline: var(--page-padding-x-tablet); } }
+@media (min-width: 1280px) { .b-sponsors__inner { padding-inline: var(--page-padding-x-desktop); } }
+
+.b-sponsors__kicker { color: var(--color-alpha-500); margin-block-end: var(--space-s); }
+
+.b-sponsors__list {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-m) var(--space-l);
+}
+
+.b-sponsor { display: flex; align-items: center; }
+
+/*
+ * Die Dateien sind einfarbige Positiv-Fassungen in Vereinsblau (#07283d).
+ * Auf #041825 ergäbe das ein Kontrastverhältnis von etwa 1,15:1 — praktisch
+ * unsichtbar. `brightness(0)` macht jede Vollfarbe schwarz, `invert(1)`
+ * anschließend weiß; bei einfarbigen Marken entsteht so exakt die
+ * Negativ-Fassung. Liegen offizielle 1c-neg-Dateien vor, entfällt der Filter.
+ */
+.b-sponsor__logo {
+  height: 28px;
+  width: auto;
+  max-width: 140px;
+  object-fit: contain;
+  filter: brightness(0) invert(1);
+  opacity: .7;
+  transition: opacity var(--transition-base);
+}
+.b-sponsor:hover .b-sponsor__logo,
+.b-sponsor:focus-visible .b-sponsor__logo { opacity: 1; }
+
+@media (min-width: 768px) { .b-sponsor__logo { height: 32px; max-width: 160px; } }
+
+/* Presenting-Sponsor in der Kopfzeile */
+.b-presenting {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3xs);
+  flex-shrink: 0;
+}
+.b-presenting__label {
+  font-size: var(--step--2);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .06em;
+  color: var(--color-alpha-500);
+  white-space: nowrap;
+}
+.b-presenting__logo { height: 20px; max-width: 104px; opacity: .85; }
+.b-presenting:hover .b-presenting__logo { opacity: 1; }
+
 /* ── Cookie-Hinweis ────────────────────────────────────────────────────── */
 
 .b-consent {
@@ -914,3 +973,12 @@ select.b-input option { background: var(--color-surface-alternate); color: var(-
   white-space: nowrap;
   border: 0;
 }
+
+/* In der Kopfzeile stehen angemeldet bis zu vier Elemente nebeneinander. Auf
+   schmalen Geräten weicht das Beiwerk — Presenting-Sponsor, Netzwerkadresse,
+   Benutzername —, damit die Leiste nicht aus dem Bild läuft. Alles davon ist
+   an anderer Stelle erreichbar.
+   Muss hinter den Komponenten stehen: bei gleicher Spezifität gewinnt die
+   spätere Regel, sonst setzt sich das display der Komponente durch. */
+.b-hide-narrow { display: none; }
+@media (min-width: 768px) { .b-hide-narrow { display: inline-flex; } }

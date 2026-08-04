@@ -1,6 +1,7 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
 import Icon from './ui/Icon';
+import { SPONSORS } from '../constants/sponsors';
 
 /**
  * Fußzeile mit den Pflichtangaben.
@@ -27,6 +28,27 @@ const LEGAL = [
 export default function Footer() {
   return (
     <footer className="b-footer">
+      <section className="b-sponsors" aria-label="Partner des VfL Bochum 1848">
+        <div className="b-sponsors__inner">
+          <div className="b-kicker b-sponsors__kicker">Unsere Partner</div>
+          <ul className="b-sponsors__list">
+            {SPONSORS.map(sponsor => (
+              <li key={sponsor.name}>
+                <a
+                  className="b-sponsor"
+                  href={sponsor.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={sponsor.name}
+                >
+                  <img className="b-sponsor__logo" src={sponsor.logo} alt={sponsor.name} loading="lazy" />
+                </a>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+
       <div className="b-footer__inner">
         <div className="b-footer__block">
           <div className="b-kicker">1848TV</div>

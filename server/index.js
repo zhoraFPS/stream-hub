@@ -951,6 +951,13 @@ setupWebSocket(wssHttp);
 if (httpsServer) setupWebSocket(new WebSocketServer({ server: httpsServer }));
 
 // ── Catch-all for SPA ─────────────────────────────────────────────────────────
+
+// Unbekannte API-Pfade sollen als Fehler ankommen, nicht als HTML-Seite —
+// sonst versucht der Client, eine Startseite als JSON zu lesen.
+app.use('/api', (req, res) => res.status(404).json({ error: 'Unbekannter Endpunkt' }));
+
+// Alles andere übernimmt der Router im Browser, damit auch ein direkt
+// aufgerufener Link wie /video/<id> die Anwendung lädt.
 if (fs.existsSync(DIST_DIR)) {
   app.get('*', (req, res) => res.sendFile(path.join(DIST_DIR, 'index.html')));
 }

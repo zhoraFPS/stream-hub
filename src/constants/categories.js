@@ -28,6 +28,17 @@ export function categoryLabel(value) {
   return CATEGORIES.find(c => c.value === value)?.label || value;
 }
 
+/** Kategorie ↔ URL-Baustein. `Hinter_Kulissen` wird zu `hinter-kulissen`. */
+export function categorySlug(value) {
+  if (!value || value === 'All') return '';
+  return value.toLowerCase().replace(/_/g, '-');
+}
+
+export function categoryFromSlug(slug) {
+  if (!slug) return 'All';
+  return CATEGORIES.find(c => categorySlug(c.value) === slug.toLowerCase())?.value || null;
+}
+
 /**
  * Archiv-Einordnung.
  *

@@ -8,7 +8,7 @@ import Icon from './ui/Icon';
  * (variant="overlay"), sonst als feste Leiste auf der Fläche.
  */
 export default function Navbar({
-  search, setSearch,
+  onSearch, initialSearch = '',
   onOpenUpload, onOpenQR,
   systemInfo, isLive,
   currentUser, authToken,
@@ -21,7 +21,11 @@ export default function Navbar({
   // Hochladen und Studio sind Redaktionswerkzeuge — ein Zuschauerkonto sieht sie nicht.
   const mayPublish = currentUser?.role === 'editor' || currentUser?.role === 'admin';
   const [menuOpen, setMenuOpen] = useState(false);
+  const [term, setTerm] = useState(initialSearch);
   const menuRef = useRef(null);
+
+  // Beim Wechsel auf eine Suchadresse steht der Begriff schon im Feld.
+  useEffect(() => { setTerm(initialSearch); }, [initialSearch]);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -66,15 +70,22 @@ export default function Navbar({
           ))}
         </nav>
 
-        {setSearch && (
-          <label style={{ position: 'relative', flex: 1, maxWidth: 300, minWidth: 0 }}>
-            <span className="b-visually-hidden">Mediathek durchsuchen</span>
+        {onSearch && (
+          // Absenden statt Mittippen: die Suche hat eine eigene Adresse, und
+          // niemand soll bei jedem Buchstaben eine neue Seite bekommen.
+          <form
+            onSubmit={(e) => { e.preventDefault(); onSearch(term.trim()); }}
+            style={{ position: 'relative', flex: 1, maxWidth: 300, minWidth: 0 }}
+            role="search"
+          >
+            <label className="b-visually-hidden" htmlFor="mediathek-suche">Mediathek durchsuchen</label>
             <input
+              id="mediathek-suche"
               type="search"
               className="b-input"
               placeholder="Suchen"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
+              value={term}
+              onChange={e => setTerm(e.target.value)}
               style={{ paddingLeft: 'var(--space-l)' }}
             />
             <Icon
@@ -89,7 +100,7 @@ export default function Navbar({
                 pointerEvents: 'none',
               }}
             />
-          </label>
+          </form>
         )}
       </div>
 

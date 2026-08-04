@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef, lazy, Suspense } from 'react';
+import { Routes, Route, useNavigate, useLocation, useParams, Navigate } from 'react-router-dom';
 import ErrorBoundary from './components/ErrorBoundary';
 import Navbar from './components/Navbar';
 import VideoCard from './components/VideoCard';
@@ -6,7 +7,9 @@ import SectionTitle from './components/ui/SectionTitle';
 import Chips from './components/ui/Chips';
 import Reveal from './components/ui/Reveal';
 import Icon from './components/ui/Icon';
-import { CATEGORIES, CATEGORY_FILTERS, categoryLabel } from './constants/categories';
+import {
+  CATEGORIES, CATEGORY_FILTERS, categoryLabel, categorySlug, categoryFromSlug,
+} from './constants/categories';
 
 /** Videos ohne Wettbewerbsangabe landen gesammelt am Ende. */
 const OHNE_WETTBEWERB = 'Weitere Videos';
@@ -35,9 +38,8 @@ function PageLoader() {
 }
 
 export default function App() {
-  // ── Seitenzustand ───────────────────────────────────────────────────────────
-  const [currentPage, setCurrentPage] = useState('home'); // home|watch|live|studio|auth|channel|settings
-  const [channelUsername, setChannelUsername] = useState(null);
+  const navigate = useNavigate();
+  const location = useLocation();
 
   // ── Auth ────────────────────────────────────────────────────────────────────
   const [authToken, setAuthToken] = useState(() => localStorage.getItem('streamhub_token'));
@@ -46,10 +48,6 @@ export default function App() {
   // ── Inhalte ─────────────────────────────────────────────────────────────────
   const [videos, setVideos] = useState([]);
   const [liveChannels, setLiveChannels] = useState([]);
-  const [selectedCategory, setSelectedCategory] = useState('All');
-  const [searchQuery, setSearchQuery] = useState('');   // was im Feld steht
-  const [searchTerm, setSearchTerm] = useState('');     // wonach tatsächlich gesucht wird
-  const [activeVideo, setActiveVideo] = useState(null);
   const [activeLive, setActiveLive] = useState(null);
   const [systemInfo, setSystemInfo] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -64,6 +62,20 @@ export default function App() {
   const [isUploadOpen, setIsUploadOpen] = useState(false);
   const [isQROpen, setIsQROpen] = useState(false);
 
+  /**
+   * Kategorie und Suchbegriff stehen in der Adresszeile, nicht im Zustand.
+   * Dadurch lässt sich jede Ansicht teilen und der Zurück-Knopf tut, was er soll.
+   */
+  const routeCategory = useMemo(() => {
+    const match = location.pathname.match(/^\/category\/([^/]+)/);
+    return match ? categoryFromSlug(decodeURIComponent(match[1])) : 'All';
+  }, [location.pathname]);
+
+  const routeSearch = useMemo(() => {
+    if (location.pathname !== '/search') return '';
+    return new URLSearchParams(location.search).get('q')?.trim() || '';
+  }, [location.pathname, location.search]);
+
   // ── Auth-Helfer ─────────────────────────────────────────────────────────────
   const authHeaders = useCallback(() =>
     authToken ? { Authorization: `Bearer ${authToken}` } : {}, [authToken]);
@@ -72,7 +84,7 @@ export default function App() {
     localStorage.setItem('streamhub_token', token);
     setAuthToken(token);
     setCurrentUser(user);
-    setCurrentPage('home');
+    navigate('/');
   };
 
   const handleLogout = () => {
@@ -81,7 +93,7 @@ export default function App() {
     fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     setAuthToken(null);
     setCurrentUser(null);
-    setCurrentPage('home');
+    navigate('/');
   };
 
   useEffect(() => {
@@ -97,8 +109,8 @@ export default function App() {
     try {
       if (!quiet) setLoading(true);
       const url = new URL('/api/videos', window.location.origin);
-      if (selectedCategory && selectedCategory !== 'All') url.searchParams.append('category', selectedCategory);
-      if (searchTerm) url.searchParams.append('search', searchTerm);
+      if (routeCategory && routeCategory !== 'All') url.searchParams.append('category', routeCategory);
+      if (routeSearch) url.searchParams.append('search', routeSearch);
       const res = await fetch(url, { headers: authHeaders() });
       if (!res.ok) throw new Error('Videos konnten nicht geladen werden.');
       setVideos(await res.json());
@@ -108,7 +120,7 @@ export default function App() {
     } finally {
       if (!quiet) setLoading(false);
     }
-  }, [selectedCategory, searchTerm, authHeaders]);
+  }, [routeCategory, routeSearch, authHeaders]);
 
   const fetchTaxonomy = useCallback(async () => {
     try {
@@ -138,17 +150,10 @@ export default function App() {
       .catch(() => {});
   }, []);
 
-  // Tippen soll nicht jede Taste einzeln an den Server schicken.
-  useEffect(() => {
-    const id = setTimeout(() => setSearchTerm(searchQuery.trim()), 300);
-    return () => clearTimeout(id);
-  }, [searchQuery]);
-
-  useEffect(() => { fetchVideos(); }, [selectedCategory, searchTerm]);
+  useEffect(() => { fetchVideos(); }, [routeCategory, routeSearch, authToken]);
 
   // Der Live-Status hängt nicht am Filter — einmal beim Start, danach per Ereignis.
   useEffect(() => { fetchLiveChannels(); }, []);
-
   useEffect(() => { fetchTaxonomy(); }, [fetchTaxonomy]);
 
   // Erste vorhandene Saison vorwählen, sobald bekannt ist, welche es gibt.
@@ -158,7 +163,7 @@ export default function App() {
   }, [taxonomy, archiveSeason]);
 
   useEffect(() => {
-    if (!archiveSeason) { setArchiveVideos([]); return; }
+    if (!archiveSeason) { setArchiveVideos([]); return undefined; }
     let abgebrochen = false;
     const url = new URL('/api/videos', window.location.origin);
     url.searchParams.set('season', archiveSeason);
@@ -170,8 +175,8 @@ export default function App() {
     return () => { abgebrochen = true; };
   }, [archiveSeason, authHeaders, videos]);
 
-  // Die Abrufer hängen an Kategorie und Suchbegriff. Über eine Ref bleibt der
-  // Ereignisstrom davon unberührt und verbindet sich nicht bei jedem Tastendruck neu.
+  // Die Abrufer hängen an Route und Anmeldung. Über eine Ref bleibt der
+  // Ereignisstrom davon unberührt und verbindet sich nicht bei jedem Wechsel neu.
   const refreshRef = useRef({ fetchVideos, fetchLiveChannels, fetchTaxonomy });
   useEffect(() => {
     refreshRef.current = { fetchVideos, fetchLiveChannels, fetchTaxonomy };
@@ -205,68 +210,19 @@ export default function App() {
   }, [feedConnected]);
 
   // ── Navigation ──────────────────────────────────────────────────────────────
-  const goHome = () => {
-    setCurrentPage('home');
-    setActiveVideo(null);
-    if (window.location.hash) window.location.hash = '';
-  };
-
   const openVideo = (video) => {
     if (video.isLive) {
-      if (video.username) openChannel(video.username);
-      else {
-        setActiveLive(video);
-        setCurrentPage('live');
-        window.location.hash = '#live';
-      }
+      navigate(video.username ? `/livestream/${video.username}` : '/livestream');
     } else {
-      setActiveVideo(video);
-      setCurrentPage('watch');
-      window.scrollTo({ top: 0 });
-      if (video.id) window.location.hash = `#watch=${video.id}`;
+      navigate(`/video/${video.id}`);
     }
   };
 
-  const openChannel = (username) => {
-    if (!username) return;
-    setChannelUsername(username);
-    setCurrentPage('channel');
-    window.location.hash = `#channel=${username}`;
-  };
-
-  const openStudio = () => { setCurrentPage('studio'); window.location.hash = '#studio'; };
-  const openSettings = () => { setCurrentPage('settings'); window.location.hash = '#settings'; };
+  const openChannel = (username) => { if (username) navigate(`/channel/${username}`); };
   const openLive = () => {
     const channel = liveChannels[0];
-    if (channel?.username) openChannel(channel.username);
-    else { setCurrentPage('live'); window.location.hash = '#live'; }
+    navigate(channel?.username ? `/livestream/${channel.username}` : '/livestream');
   };
-
-  useEffect(() => {
-    const handleHash = async () => {
-      const hash = window.location.hash;
-      if (hash.startsWith('#channel=')) {
-        const uname = hash.replace('#channel=', '');
-        if (uname) { setChannelUsername(uname); setCurrentPage('channel'); }
-      } else if (hash === '#studio') setCurrentPage('studio');
-      else if (hash === '#settings') setCurrentPage('settings');
-      else if (hash === '#auth') setCurrentPage('auth');
-      else if (hash === '#live') setCurrentPage('live');
-      else if (hash.startsWith('#watch=')) {
-        const vidId = hash.replace('#watch=', '');
-        if (vidId) {
-          setCurrentPage('watch');
-          try {
-            const res = await fetch(`/api/videos/${vidId}`);
-            if (res.ok) setActiveVideo(await res.json());
-          } catch {}
-        }
-      } else if (!hash) setCurrentPage('home');
-    };
-    handleHash();
-    window.addEventListener('hashchange', handleHash);
-    return () => window.removeEventListener('hashchange', handleHash);
-  }, []);
 
   const handleDeleteVideo = async (videoId) => {
     if (!authToken) return;
@@ -281,18 +237,8 @@ export default function App() {
 
   const mayPublish = currentUser?.role === 'editor' || currentUser?.role === 'admin';
   const isLiveActive = !!activeLive || liveChannels.length > 0;
-  const isFiltered = selectedCategory !== 'All' || !!searchTerm;
 
   const featuredLiveChannel = liveChannels[0] || (activeLive?.username ? activeLive : null);
-  const featuredVideo = !isFiltered ? videos[0] : null;
-
-  /** Bei „Alle" gruppieren wir wie 1848TV in Reihen pro Kategorie. */
-  const lanes = useMemo(() => {
-    if (isFiltered) return [];
-    return CATEGORIES
-      .map(cat => ({ ...cat, items: videos.filter(v => v.category === cat.value) }))
-      .filter(lane => lane.items.length > 0);
-  }, [videos, isFiltered]);
 
   /** Videos der gewählten Saison nach Wettbewerb gebündelt. */
   const archiveGroups = useMemo(() => {
@@ -309,25 +255,20 @@ export default function App() {
       .map(([competition, items]) => ({ competition, items }));
   }, [archiveVideos]);
 
-  const uncategorised = useMemo(() => {
-    if (isFiltered) return [];
-    const known = new Set(CATEGORIES.map(c => c.value));
-    return videos.filter(v => !known.has(v.category));
-  }, [videos, isFiltered]);
-
   const navProps = {
-    search: searchQuery, setSearch: setSearchQuery,
-    onOpenUpload: mayPublish ? () => setIsUploadOpen(true) : () => setCurrentPage('auth'),
+    onSearch: (q) => navigate(q ? `/search?q=${encodeURIComponent(q)}` : '/search'),
+    initialSearch: routeSearch,
+    onOpenUpload: mayPublish ? () => setIsUploadOpen(true) : () => navigate('/login'),
     onOpenQR: () => setIsQROpen(true),
     systemInfo, isLive: isLiveActive,
     currentUser, authToken,
-    onLogin: () => setCurrentPage('auth'),
+    onLogin: () => navigate('/login'),
     onLogout: handleLogout,
     onOpenChannel: () => openChannel(currentUser?.username),
-    onOpenSettings: openSettings,
-    onOpenStudio: openStudio,
+    onOpenSettings: () => navigate('/profil'),
+    onOpenStudio: () => navigate('/studio'),
     onOpenLive: openLive,
-    onHome: goHome,
+    onHome: () => navigate('/'),
   };
 
   const modals = (
@@ -345,149 +286,330 @@ export default function App() {
     </Suspense>
   );
 
-  // ══════════════════════════════════════════════════════════════════════════
-  // Unterseiten
-  // ══════════════════════════════════════════════════════════════════════════
-
-  if (currentPage === 'auth') {
-    return (
-      <ErrorBoundary>
-        <Suspense fallback={<PageLoader />}>
-          <AuthPage onAuth={handleAuth} onBack={goHome} />
-        </Suspense>
-      </ErrorBoundary>
-    );
-  }
-
-  if (currentPage === 'live' && activeLive) {
-    return (
-      <ErrorBoundary>
-        <Navbar {...navProps} activePage="live" />
-        <div className="b-page b-page--wide">
-          <Suspense fallback={<PageLoader />}>
-            <LivePlayer liveStreamInfo={activeLive} onBack={goHome} />
-          </Suspense>
-        </div>
-      </ErrorBoundary>
-    );
-  }
-
-  if (currentPage === 'watch' && activeVideo) {
-    return (
-      <ErrorBoundary>
-        <Navbar {...navProps} />
-        <div className="b-page b-page--wide">
-          <Suspense fallback={<PageLoader />}>
-            <VideoPlayer
-              video={activeVideo}
-              allVideos={videos}
-              onSelectVideo={openVideo}
-              onOpenChannel={openChannel}
-              onBack={goHome}
-              systemInfo={systemInfo}
-              authToken={authToken}
-            />
-          </Suspense>
-        </div>
-      </ErrorBoundary>
-    );
-  }
-
-  // Das Studio ist Redaktionswerkzeug. Der Server weist ohne Rechte ohnehin ab,
-  // aber niemand soll erst auf einer Seite landen, die er nicht nutzen darf.
-  if (currentPage === 'studio' && !mayPublish) {
-    return (
-      <ErrorBoundary>
-        <Navbar {...navProps} />
-        <div className="b-page b-page--narrow">
-          <div className="b-empty">
-            <h1 className="b-heading b-heading--500">Kein Zugriff</h1>
-            <p className="b-copy" style={{ margin: 'var(--space-2xs) auto var(--space-s)' }}>
-              Das Live-Studio ist der Redaktion vorbehalten.
-            </p>
-            <button className="b-button b-button--secondary b-button--s" onClick={goHome}>
-              Zur Mediathek
-            </button>
-          </div>
-        </div>
-      </ErrorBoundary>
-    );
-  }
-
-  if (currentPage === 'studio') {
-    return (
-      <ErrorBoundary>
-        <Navbar {...navProps} activePage="studio" />
-        <div className="b-page b-page--wide">
-          <Suspense fallback={<PageLoader />}>
-            <LiveStudioPage
-              onBack={goHome}
-              systemInfo={systemInfo}
-              authToken={authToken}
-              currentUser={currentUser}
-            />
-          </Suspense>
-        </div>
-      </ErrorBoundary>
-    );
-  }
-
-  if (currentPage === 'channel' && channelUsername) {
-    return (
-      <ErrorBoundary>
-        <Navbar {...navProps} />
-        <div className="b-page b-page--wide">
-          <Suspense fallback={<PageLoader />}>
-            <ChannelPage
-              username={channelUsername}
-              currentUser={currentUser}
-              authToken={authToken}
-              onBack={goHome}
-              onSelectVideo={openVideo}
-            />
-          </Suspense>
-        </div>
-        {modals}
-      </ErrorBoundary>
-    );
-  }
-
-  if (currentPage === 'settings' && currentUser) {
-    return (
-      <ErrorBoundary>
-        <Navbar {...navProps} />
-        <div className="b-page">
-          <Suspense fallback={<PageLoader />}>
-            <SettingsPage
-              currentUser={currentUser}
-              authToken={authToken}
-              onBack={goHome}
-              onUserUpdate={setCurrentUser}
-            />
-          </Suspense>
-        </div>
-      </ErrorBoundary>
-    );
-  }
-
-  // ══════════════════════════════════════════════════════════════════════════
-  // Startseite
-  // ══════════════════════════════════════════════════════════════════════════
+  const listProps = {
+    videos, loading, error, currentUser, openVideo, handleDeleteVideo,
+  };
 
   return (
     <ErrorBoundary>
-      <Navbar {...navProps} variant="overlay" activePage="home" />
+      <Routes>
+        <Route path="/" element={
+          <Shell nav={navProps} variant="overlay" activePage="home" modals={modals}>
+            <HomePage
+              {...listProps}
+              liveChannel={featuredLiveChannel}
+              liveChannels={liveChannels}
+              taxonomy={taxonomy}
+              archiveSeason={archiveSeason}
+              setArchiveSeason={setArchiveSeason}
+              archiveGroups={archiveGroups}
+              onOpenChannel={openChannel}
+              onLogin={() => navigate('/login')}
+              onCategory={(value) => navigate(value === 'All' ? '/' : `/category/${categorySlug(value)}`)}
+              authToken={authToken}
+            />
+          </Shell>
+        } />
 
+        <Route path="/category/:slug" element={
+          <Shell nav={navProps} modals={modals}>
+            <CategoryPage {...listProps} category={routeCategory} onCategory={(value) =>
+              navigate(value === 'All' ? '/' : `/category/${categorySlug(value)}`)} />
+          </Shell>
+        } />
+
+        <Route path="/search" element={
+          <Shell nav={navProps} modals={modals}>
+            <SearchPage {...listProps} term={routeSearch} />
+          </Shell>
+        } />
+
+        <Route path="/video/:id" element={
+          <Shell nav={navProps} modals={modals}>
+            <Suspense fallback={<PageLoader />}>
+              <VideoRoute
+                allVideos={videos}
+                onSelectVideo={openVideo}
+                onOpenChannel={openChannel}
+                authToken={authToken}
+                authHeaders={authHeaders}
+              />
+            </Suspense>
+          </Shell>
+        } />
+
+        <Route path="/livestream/:username?" element={
+          <Shell nav={navProps} activePage="live" modals={modals}>
+            <Suspense fallback={<PageLoader />}>
+              <LiveRoute liveChannels={liveChannels} activeLive={activeLive} onBack={() => navigate('/')} />
+            </Suspense>
+          </Shell>
+        } />
+
+        <Route path="/channel/:username" element={
+          <Shell nav={navProps} modals={modals}>
+            <Suspense fallback={<PageLoader />}>
+              <ChannelRoute
+                currentUser={currentUser}
+                authToken={authToken}
+                onBack={() => navigate('/')}
+                onSelectVideo={openVideo}
+              />
+            </Suspense>
+          </Shell>
+        } />
+
+        <Route path="/studio" element={
+          mayPublish ? (
+            <Shell nav={navProps} activePage="studio">
+              <Suspense fallback={<PageLoader />}>
+                <LiveStudioPage
+                  onBack={() => navigate('/')}
+                  systemInfo={systemInfo}
+                  authToken={authToken}
+                  currentUser={currentUser}
+                />
+              </Suspense>
+            </Shell>
+          ) : (
+            <Shell nav={navProps}>
+              <Denied onBack={() => navigate('/')} />
+            </Shell>
+          )
+        } />
+
+        <Route path="/profil" element={
+          currentUser ? (
+            <Shell nav={navProps} narrow>
+              <Suspense fallback={<PageLoader />}>
+                <SettingsPage
+                  currentUser={currentUser}
+                  authToken={authToken}
+                  onBack={() => navigate('/')}
+                  onUserUpdate={setCurrentUser}
+                />
+              </Suspense>
+            </Shell>
+          ) : <Navigate to="/login" replace />
+        } />
+
+        <Route path="/login" element={
+          currentUser ? <Navigate to="/" replace /> : (
+            <Suspense fallback={<PageLoader />}>
+              <AuthPage onAuth={handleAuth} onBack={() => navigate('/')} />
+            </Suspense>
+          )
+        } />
+
+        <Route path="*" element={
+          <Shell nav={navProps}>
+            <NotFound onBack={() => navigate('/')} />
+          </Shell>
+        } />
+      </Routes>
+    </ErrorBoundary>
+  );
+}
+
+// ── Rahmen ────────────────────────────────────────────────────────────────────
+
+function Shell({ nav, variant, activePage, narrow, modals, children }) {
+  return (
+    <>
+      <Navbar {...nav} variant={variant} activePage={activePage} />
+      {variant === 'overlay' ? children : (
+        <div className={`b-page ${narrow ? '' : 'b-page--wide'}`}>{children}</div>
+      )}
+      {modals}
+    </>
+  );
+}
+
+// ── Routen mit eigenen Daten ──────────────────────────────────────────────────
+
+/** Holt das Video anhand der Adresse — auch beim direkten Aufruf eines Links. */
+function VideoRoute({ allVideos, onSelectVideo, onOpenChannel, authToken, authHeaders }) {
+  const { id } = useParams();
+  const navigate = useNavigate();
+  const [video, setVideo] = useState(null);
+  const [state, setState] = useState('loading');
+
+  useEffect(() => {
+    let abgebrochen = false;
+    setState('loading');
+    fetch(`/api/videos/${id}`, { headers: authHeaders() })
+      .then(res => res.ok ? res.json() : Promise.reject(new Error('404')))
+      .then(data => { if (!abgebrochen) { setVideo(data); setState('ready'); } })
+      .catch(() => { if (!abgebrochen) setState('missing'); });
+    return () => { abgebrochen = true; };
+  }, [id, authHeaders]);
+
+  if (state === 'loading') return <PageLoader />;
+  if (state === 'missing') return <NotFound onBack={() => navigate('/')} what="Video" />;
+
+  return (
+    <VideoPlayer
+      video={{ ...video, thumbnailUrl: video.thumbnail_url || video.thumbnailUrl }}
+      allVideos={allVideos}
+      onSelectVideo={onSelectVideo}
+      onOpenChannel={onOpenChannel}
+      onBack={() => navigate('/')}
+      authToken={authToken}
+    />
+  );
+}
+
+function LiveRoute({ liveChannels, activeLive, onBack }) {
+  const { username } = useParams();
+  const channel = username ? liveChannels.find(c => c.username === username) : null;
+
+  const stream = channel ? {
+    id: `live-obs-${channel.id}`,
+    userId: channel.id,
+    username: channel.username,
+    stream_key: channel.stream_key,
+    title: channel.live_title || `${channel.display_name || channel.username} — Live`,
+    uploader: channel.display_name || channel.username,
+    isLive: true,
+  } : activeLive;
+
+  if (!stream) {
+    return (
+      <div className="b-empty">
+        <h1 className="b-heading b-heading--500">Gerade läuft kein Stream</h1>
+        <p className="b-copy" style={{ margin: 'var(--space-2xs) auto var(--space-s)' }}>
+          Sobald der VfL sendet, erscheint der Stream hier und auf der Startseite.
+        </p>
+        <button className="b-button b-button--secondary b-button--s" onClick={onBack}>
+          Zur Mediathek
+        </button>
+      </div>
+    );
+  }
+
+  return <LivePlayer liveStreamInfo={stream} onBack={onBack} />;
+}
+
+function ChannelRoute({ currentUser, authToken, onBack, onSelectVideo }) {
+  const { username } = useParams();
+  return (
+    <ChannelPage
+      username={username}
+      currentUser={currentUser}
+      authToken={authToken}
+      onBack={onBack}
+      onSelectVideo={onSelectVideo}
+    />
+  );
+}
+
+// ── Seiten ────────────────────────────────────────────────────────────────────
+
+function VideoGrid({ videos, loading, error, currentUser, openVideo, handleDeleteVideo, empty }) {
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', padding: 'var(--space-2xl)' }}>
+        <div className="b-spinner" />
+      </div>
+    );
+  }
+  if (error) return <div className="b-notice b-notice--error">{error}</div>;
+  if (!videos.length) return empty;
+
+  return (
+    <div className="b-grid">
+      {videos.map(video => (
+        <VideoCard
+          key={video.id}
+          video={toCardVideo(video)}
+          onSelectVideo={openVideo}
+          onDeleteVideo={canDelete(video, currentUser) ? handleDeleteVideo : null}
+        />
+      ))}
+    </div>
+  );
+}
+
+function CategoryPage({ category, onCategory, ...rest }) {
+  if (!category) return <NotFound what="Kategorie" onBack={() => onCategory('All')} />;
+
+  return (
+    <section className="b-section">
+      <SectionTitle
+        title={categoryLabel(category)}
+        count={rest.loading ? null : rest.videos.length}
+        action={{ label: 'Alle Videos', onClick: () => onCategory('All') }}
+      >
+        <Chips items={CATEGORY_FILTERS} value={category} onChange={onCategory} />
+      </SectionTitle>
+
+      <VideoGrid {...rest} empty={
+        <div className="b-empty">
+          <h2 className="b-heading b-heading--500">Noch nichts in dieser Kategorie</h2>
+          <p className="b-copy" style={{ margin: 'var(--space-2xs) auto 0' }}>
+            Sobald die Redaktion hier etwas veröffentlicht, erscheint es an dieser Stelle.
+          </p>
+        </div>
+      } />
+    </section>
+  );
+}
+
+function SearchPage({ term, ...rest }) {
+  return (
+    <section className="b-section">
+      <SectionTitle
+        title={term ? 'Suchergebnisse' : 'Suche'}
+        count={term && !rest.loading ? rest.videos.length : null}
+      />
+      {term
+        ? <VideoGrid {...rest} empty={
+            <div className="b-empty">
+              <h2 className="b-heading b-heading--500">Nichts gefunden</h2>
+              <p className="b-copy" style={{ margin: 'var(--space-2xs) auto 0' }}>
+                Für „{term}" gibt es keine Treffer. Versuch einen kürzeren Suchbegriff.
+              </p>
+            </div>
+          } />
+        : <p className="b-copy">Gib oben einen Suchbegriff ein.</p>}
+    </section>
+  );
+}
+
+function HomePage({
+  videos, loading, error, currentUser, openVideo, handleDeleteVideo,
+  liveChannel, liveChannels, taxonomy, archiveSeason, setArchiveSeason,
+  archiveGroups, onOpenChannel, onLogin, onCategory, authToken,
+}) {
+  const featuredVideo = videos[0];
+
+  const lanes = useMemo(() => CATEGORIES
+    .map(cat => ({ ...cat, items: videos.filter(v => v.category === cat.value) }))
+    .filter(lane => lane.items.length > 0), [videos]);
+
+  const uncategorised = useMemo(() => {
+    const known = new Set(CATEGORIES.map(c => c.value));
+    return videos.filter(v => !known.has(v.category));
+  }, [videos]);
+
+  // `key` gehört bewusst nicht hier hinein: React verlangt ihn direkt am
+  // Element, ein gespreizter key wird stillschweigend ignoriert.
+  const cardProps = (video) => ({
+    video: toCardVideo(video),
+    onSelectVideo: openVideo,
+    onDeleteVideo: canDelete(video, currentUser) ? handleDeleteVideo : null,
+  });
+
+  return (
+    <>
       <Hero
-        liveChannel={featuredLiveChannel}
+        liveChannel={liveChannel}
         video={featuredVideo}
-        onOpenChannel={openChannel}
+        onOpenChannel={onOpenChannel}
         onSelectVideo={openVideo}
       />
 
       <div className="b-page b-page--wide" style={{ paddingBlockStart: 'var(--space-xl)' }}>
-
-        {/* Weitere Live-Kanäle */}
         {liveChannels.length > 1 && (
           <Reveal as="section" className="b-section b-section--compact">
             <SectionTitle title="Weitere Live-Kanäle" count={liveChannels.length - 1} />
@@ -495,32 +617,17 @@ export default function App() {
               {liveChannels.slice(1).map(ch => (
                 <VideoCard
                   key={ch.id}
-                  video={{
-                    id: ch.id,
-                    title: ch.live_title || 'VfL Bochum 1848 — Live',
-                    isLive: true,
-                    username: ch.username,
-                    category: 'Spiele',
-                  }}
-                  onSelectVideo={() => openChannel(ch.username)}
+                  video={{ id: ch.id, title: ch.live_title || 'VfL Bochum 1848 — Live', isLive: true, username: ch.username, category: 'Spiele' }}
+                  onSelectVideo={() => onOpenChannel(ch.username)}
                 />
               ))}
             </div>
           </Reveal>
         )}
 
-        {/* Mediathek */}
         <Reveal as="section" className="b-section">
-          <SectionTitle
-            title={isFiltered ? (searchTerm ? 'Suchergebnisse' : categoryLabel(selectedCategory)) : 'Neueste Videos'}
-            count={isFiltered && !loading ? videos.length : null}
-            action={isFiltered ? { label: 'Filter zurücksetzen', onClick: () => { setSelectedCategory('All'); setSearchQuery(''); setSearchTerm(''); } } : null}
-          >
-            <Chips
-              items={CATEGORY_FILTERS}
-              value={selectedCategory}
-              onChange={setSelectedCategory}
-            />
+          <SectionTitle title="Neueste Videos">
+            <Chips items={CATEGORY_FILTERS} value="All" onChange={onCategory} />
           </SectionTitle>
 
           {loading ? (
@@ -530,49 +637,35 @@ export default function App() {
           ) : error ? (
             <div className="b-notice b-notice--error">{error}</div>
           ) : videos.length === 0 ? (
-            <EmptyState authToken={authToken} search={searchTerm} onLogin={() => setCurrentPage('auth')} />
-          ) : isFiltered ? (
-            <div className="b-grid">
-              {videos.map(video => (
-                <VideoCard
-                  key={video.id}
-                  video={toCardVideo(video)}
-                  onSelectVideo={openVideo}
-                  onDeleteVideo={canDelete(video, currentUser) ? handleDeleteVideo : null}
-                />
-              ))}
+            <div className="b-empty">
+              <h2 className="b-heading b-heading--500">Die Mediathek ist noch leer</h2>
+              <p className="b-copy" style={{ margin: 'var(--space-2xs) auto var(--space-s)' }}>
+                {authToken
+                  ? 'Lade das erste Video hoch — Testspiel, Interview oder Pressekonferenz.'
+                  : 'Sobald die Redaktion Videos veröffentlicht, erscheinen sie hier.'}
+              </p>
+              {!authToken && (
+                <button className="b-button b-button--secondary b-button--s" onClick={onLogin}>
+                  Als Redaktion anmelden
+                </button>
+              )}
             </div>
           ) : (
             <div className="b-lane">
-              {videos.slice(featuredVideo ? 1 : 0, featuredVideo ? 13 : 12).map(video => (
-                <VideoCard
-                  key={video.id}
-                  video={toCardVideo(video)}
-                  onSelectVideo={openVideo}
-                  onDeleteVideo={canDelete(video, currentUser) ? handleDeleteVideo : null}
-                />
-              ))}
+              {videos.slice(1, 13).map(video => <VideoCard key={video.id} {...cardProps(video)} />)}
             </div>
           )}
         </Reveal>
 
-        {/* Reihen pro Kategorie — nur ungefiltert */}
         {!loading && !error && lanes.map(lane => (
           <Reveal as="section" key={lane.value} className="b-section">
             <SectionTitle
               title={lane.label}
               count={lane.items.length}
-              action={{ label: 'Alle ansehen', onClick: () => setSelectedCategory(lane.value) }}
+              action={{ label: 'Alle ansehen', onClick: () => onCategory(lane.value) }}
             />
             <div className="b-lane">
-              {lane.items.map(video => (
-                <VideoCard
-                  key={video.id}
-                  video={toCardVideo(video)}
-                  onSelectVideo={openVideo}
-                  onDeleteVideo={canDelete(video, currentUser) ? handleDeleteVideo : null}
-                />
-              ))}
+              {lane.items.map(video => <VideoCard key={video.id} {...cardProps(video)} />)}
             </div>
           </Reveal>
         ))}
@@ -581,20 +674,12 @@ export default function App() {
           <Reveal as="section" className="b-section">
             <SectionTitle title="Sonstiges" count={uncategorised.length} />
             <div className="b-lane">
-              {uncategorised.map(video => (
-                <VideoCard
-                  key={video.id}
-                  video={toCardVideo(video)}
-                  onSelectVideo={openVideo}
-                  onDeleteVideo={canDelete(video, currentUser) ? handleDeleteVideo : null}
-                />
-              ))}
+              {uncategorised.map(video => <VideoCard key={video.id} {...cardProps(video)} />)}
             </div>
           </Reveal>
         )}
 
-        {/* Archiv nach Saison und Wettbewerb */}
-        {!isFiltered && taxonomy?.seasons?.length > 0 && (
+        {taxonomy?.seasons?.length > 0 && (
           <Reveal as="section" className="b-section">
             <SectionTitle title="Archiv">
               <Chips
@@ -615,14 +700,7 @@ export default function App() {
                       <span style={{ opacity: .5 }}> · {group.items.length}</span>
                     </div>
                     <div className="b-lane">
-                      {group.items.map(video => (
-                        <VideoCard
-                          key={video.id}
-                          video={toCardVideo(video)}
-                          onSelectVideo={openVideo}
-                          onDeleteVideo={canDelete(video, currentUser) ? handleDeleteVideo : null}
-                        />
-                      ))}
+                      {group.items.map(video => <VideoCard key={video.id} {...cardProps(video)} />)}
                     </div>
                   </div>
                 ))}
@@ -631,7 +709,6 @@ export default function App() {
           </Reveal>
         )}
 
-        {/* Redaktions-Einstieg */}
         {!authToken && (
           <Reveal as="section" className="b-section b-section--compact">
             <div className="b-panel b-panel--l" style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 'var(--space-s)' }}>
@@ -642,7 +719,7 @@ export default function App() {
                   Melde dich an, um Testspiele zu streamen, Interviews zu veröffentlichen und die Mediathek zu pflegen.
                 </p>
               </div>
-              <button className="b-button b-button--primary" onClick={() => setCurrentPage('auth')}>
+              <button className="b-button b-button--primary" onClick={onLogin}>
                 Anmelden
                 <Icon name="arrow-right" size={20} />
               </button>
@@ -652,8 +729,7 @@ export default function App() {
       </div>
 
       <Marquee />
-      {modals}
-    </ErrorBoundary>
+    </>
   );
 }
 
@@ -673,6 +749,37 @@ function canDelete(video, currentUser) {
   return mayPublish && video.user_id === currentUser.id;
 }
 
+function NotFound({ onBack, what = 'Seite' }) {
+  return (
+    <div className="b-empty">
+      <div className="b-kicker">404</div>
+      <h1 className="b-heading b-heading--500" style={{ marginBlock: 'var(--space-2xs)' }}>
+        {what} nicht gefunden
+      </h1>
+      <p className="b-copy" style={{ margin: '0 auto var(--space-s)' }}>
+        Der Link führt ins Leere. Vielleicht wurde der Inhalt entfernt oder die Adresse hat sich vertippt.
+      </p>
+      <button className="b-button b-button--secondary b-button--s" onClick={onBack}>
+        Zur Mediathek
+      </button>
+    </div>
+  );
+}
+
+function Denied({ onBack }) {
+  return (
+    <div className="b-empty">
+      <h1 className="b-heading b-heading--500">Kein Zugriff</h1>
+      <p className="b-copy" style={{ margin: 'var(--space-2xs) auto var(--space-s)' }}>
+        Das Live-Studio ist der Redaktion vorbehalten.
+      </p>
+      <button className="b-button b-button--secondary b-button--s" onClick={onBack}>
+        Zur Mediathek
+      </button>
+    </div>
+  );
+}
+
 // ── Hero ──────────────────────────────────────────────────────────────────────
 
 /**
@@ -686,9 +793,7 @@ function Hero({ liveChannel, video, onOpenChannel, onSelectVideo }) {
     const name = liveChannel.display_name || liveChannel.username;
     return (
       <section className="b-hero">
-        <div className="b-hero__media" aria-hidden="true">
-          <img src="/bg-figma.jpg" alt="" />
-        </div>
+        <div className="b-hero__media" aria-hidden="true"><img src="/bg-figma.jpg" alt="" /></div>
         <div className="b-hero__scrim" aria-hidden="true" />
         <div className="b-hero__content">
           <div className="b-row">
@@ -721,7 +826,7 @@ function Hero({ liveChannel, video, onOpenChannel, onSelectVideo }) {
           <span className="b-kicker">Neu · {categoryLabel(video.category)}</span>
           <h1 className="b-heading b-heading--800">{video.title}</h1>
           <div className="b-row">
-            <button className="b-button b-button--primary" onClick={() => onSelectVideo(toCardVideo(video))}>
+            <button className="b-button b-button--primary" onClick={() => onSelectVideo(video)}>
               Video ansehen
               <Icon name="arrow-right" size={20} />
             </button>
@@ -733,9 +838,7 @@ function Hero({ liveChannel, video, onOpenChannel, onSelectVideo }) {
 
   return (
     <section className="b-hero">
-      <div className="b-hero__media" aria-hidden="true">
-        <img src="/bg-figma.jpg" alt="" />
-      </div>
+      <div className="b-hero__media" aria-hidden="true"><img src="/bg-figma.jpg" alt="" /></div>
       <div className="b-hero__scrim" aria-hidden="true" />
       <div className="b-hero__content">
         <span className="b-kicker">VfL Bochum 1848</span>
@@ -746,36 +849,6 @@ function Hero({ liveChannel, video, onOpenChannel, onSelectVideo }) {
         </p>
       </div>
     </section>
-  );
-}
-
-// ── Leerzustand ───────────────────────────────────────────────────────────────
-
-function EmptyState({ authToken, search, onLogin }) {
-  if (search) {
-    return (
-      <div className="b-empty">
-        <h3 className="b-heading b-heading--500">Nichts gefunden</h3>
-        <p className="b-copy" style={{ margin: 'var(--space-2xs) auto 0' }}>
-          Für „{search}" gibt es keine Treffer. Versuch einen kürzeren Suchbegriff.
-        </p>
-      </div>
-    );
-  }
-  return (
-    <div className="b-empty">
-      <h3 className="b-heading b-heading--500">Die Mediathek ist noch leer</h3>
-      <p className="b-copy" style={{ margin: 'var(--space-2xs) auto var(--space-s)' }}>
-        {authToken
-          ? 'Lade das erste Video hoch — Testspiel, Interview oder Pressekonferenz.'
-          : 'Sobald die Redaktion Videos veröffentlicht, erscheinen sie hier.'}
-      </p>
-      {!authToken && (
-        <button className="b-button b-button--secondary b-button--s" onClick={onLogin}>
-          Als Redaktion anmelden
-        </button>
-      )}
-    </div>
   );
 }
 

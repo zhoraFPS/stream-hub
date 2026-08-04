@@ -372,6 +372,8 @@ ul, ol { list-style: none; }
 .b-badge--duration { bottom: 0; right: 0; background: var(--color-surface); color: var(--color-front); }
 .b-badge--live     { top: 0; left: 0; background: var(--color-live); color: var(--color-white-400); }
 .b-badge--prepare  { bottom: 0; left: 0; background: var(--color-front); color: var(--color-surface); }
+/* Oben links — oben rechts liegt die Löschen-Schaltfläche. */
+.b-badge--internal { top: 0; left: 0; background: var(--color-blue-royal-400); color: var(--color-white-400); }
 .b-badge--static   { position: static; display: inline-block; }
 
 .b-card-article__delete {

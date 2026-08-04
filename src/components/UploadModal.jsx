@@ -12,6 +12,7 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [category, setCategory] = useState(CATEGORIES[0].value);
+  const [visibility, setVisibility] = useState('public');
   const [tags, setTags] = useState('VfL Bochum');
   const [duration, setDuration] = useState(0);
 
@@ -90,6 +91,7 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
     formData.append('title', title || videoFile.name);
     formData.append('description', description);
     formData.append('category', category);
+    formData.append('visibility', visibility);
     formData.append('tags', tags);
     formData.append('duration', String(duration));
 
@@ -224,6 +226,31 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
             <select id="up-cat" className="b-input" value={category} onChange={e => setCategory(e.target.value)}>
               {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
             </select>
+          </div>
+
+          <div className="b-field">
+            <span className="b-label">Sichtbarkeit</span>
+            <div className="b-chips">
+              {[
+                { value: 'public', label: 'Öffentlich' },
+                { value: 'internal', label: 'Nur intern' },
+              ].map(option => (
+                <button
+                  key={option.value}
+                  type="button"
+                  className={`b-chip${visibility === option.value ? ' --is-active' : ''}`}
+                  aria-pressed={visibility === option.value}
+                  onClick={() => setVisibility(option.value)}
+                >
+                  <span className="b-chip__label">{option.label}</span>
+                </button>
+              ))}
+            </div>
+            <p className="b-copy" style={{ marginTop: 'var(--space-3xs)' }}>
+              {visibility === 'public'
+                ? 'Für alle Besucherinnen und Besucher sichtbar.'
+                : 'Nur für angemeldete Redaktionskonten — taucht in der öffentlichen Mediathek nicht auf.'}
+            </p>
           </div>
 
           {isUploading && (

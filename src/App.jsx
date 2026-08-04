@@ -69,6 +69,8 @@ export default function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('streamhub_token');
+    // Das Medien-Cookie ist httpOnly und lässt sich nur serverseitig löschen.
+    fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
     setAuthToken(null);
     setCurrentUser(null);
     setCurrentPage('home');

@@ -8,7 +8,7 @@ import http from 'http';
 import https from 'https';
 import { WebSocketServer } from 'ws';
 import { fileURLToPath } from 'url';
-import { randomUUID, randomBytes } from 'crypto';
+import { randomUUID, randomBytes, createHmac, timingSafeEqual } from 'crypto';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { ensureCertsExist } from './generate-cert.js';
@@ -125,6 +125,63 @@ function requireAuth(req, res, next) {
   }
 }
 
+/**
+ * Zugriff auf Mediendateien.
+ *
+ * Interne Videos sollen nur die angemeldete Redaktion sehen. Der Player holt
+ * Segmente und Originaldatei aber als gewöhnliche Medien-Anfragen — dort lässt
+ * sich kein Authorization-Kopf mitgeben, und auf dem iPhone spielt Safari HLS
+ * selbst ab, ganz ohne unser Zutun. Deshalb ein eigenes, kurzlebiges Cookie,
+ * das beim Anmelden gesetzt wird; der Bearer-Token bleibt davon unberührt.
+ */
+const MEDIA_COOKIE = 'media_session';
+
+function signMediaSession(userId, expiresAt) {
+  return createHmac('sha256', JWT_SECRET).update(`${userId}.${expiresAt}`).digest('hex');
+}
+
+function issueMediaSession(res, userId) {
+  const expiresAt = Date.now() + 1000 * 60 * 60 * 24 * 7;
+  const value = `${userId}.${expiresAt}.${signMediaSession(userId, expiresAt)}`;
+  res.cookie(MEDIA_COOKIE, value, {
+    httpOnly: true, sameSite: 'lax', path: '/', maxAge: 1000 * 60 * 60 * 24 * 7,
+  });
+}
+
+function clearMediaSession(res) {
+  res.setHeader('Set-Cookie', `${MEDIA_COOKIE}=; Path=/; Max-Age=0; HttpOnly; SameSite=Lax`);
+}
+
+function readCookie(req, name) {
+  const header = req.headers.cookie;
+  if (!header) return null;
+  for (const part of header.split(';')) {
+    const index = part.indexOf('=');
+    if (index === -1) continue;
+    if (part.slice(0, index).trim() === name) return part.slice(index + 1).trim();
+  }
+  return null;
+}
+
+function hasMediaSession(req) {
+  const raw = readCookie(req, MEDIA_COOKIE);
+  if (!raw) return false;
+  const [userId, expiresAt, signature] = raw.split('.');
+  if (!userId || !expiresAt || !signature) return false;
+  if (Number(expiresAt) < Date.now()) return false;
+
+  const expected = signMediaSession(userId, expiresAt);
+  if (expected.length !== signature.length) return false;
+  return timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+}
+
+/** Darf dieser Abruf das Video sehen? Bearer-Token oder Medien-Cookie zählen. */
+function mayAccess(video, req) {
+  if (!video) return false;
+  if (video.visibility !== 'internal') return true;
+  return !!req.userId || hasMediaSession(req);
+}
+
 function optionalAuth(req, res, next) {
   const header = req.headers.authorization;
   if (header?.startsWith('Bearer ')) {
@@ -149,6 +206,18 @@ function getLocalIp() {
 }
 
 // ── Static Files ──────────────────────────────────────────────────────────────
+
+// Muss vor der statischen Auslieferung stehen: sonst wären die Segmente eines
+// internen Videos über ihren Pfad frei abrufbar und die Sichtbarkeit nur eine
+// Anzeige in der Oberfläche.
+app.use('/uploads/hls/:videoId', (req, res, next) => {
+  const video = getVideoById(req.params.videoId);
+  if (video && video.visibility === 'internal' && !hasMediaSession(req)) {
+    return res.status(403).json({ error: 'Dieses Video ist nur intern verfügbar' });
+  }
+  next();
+});
+
 app.use('/uploads', express.static(UPLOADS_DIR, {
   setHeaders: (res, filePath) => {
     // Segmente bekommen einen unveränderlichen Namen und ändern sich nie mehr —
@@ -213,6 +282,7 @@ app.post('/api/auth/register', async (req, res) => {
     const passwordHash = await bcrypt.hash(password, 10);
     const user = createUser({ username, email, passwordHash });
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    issueMediaSession(res, user.id);
 
     console.log(`[Auth] New user registered: ${username}`);
     res.status(201).json({ token, user: safeUser(user) });
@@ -234,6 +304,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!valid) return res.status(401).json({ error: 'Ungültige Zugangsdaten' });
 
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+    issueMediaSession(res, user.id);
     console.log(`[Auth] Login: ${user.username}`);
     res.json({ token, user: safeUser(user) });
   } catch (err) {
@@ -241,9 +312,17 @@ app.post('/api/auth/login', async (req, res) => {
   }
 });
 
+app.post('/api/auth/logout', (req, res) => {
+  clearMediaSession(res);
+  res.json({ success: true });
+});
+
 app.get('/api/auth/me', requireAuth, (req, res) => {
   const user = getUserById(req.userId);
   if (!user) return res.status(404).json({ error: 'User not found' });
+  // Nach einem Neuladen liegt der Token noch im Browser, das Medien-Cookie aber
+  // womöglich nicht mehr — hier wieder auffrischen.
+  issueMediaSession(res, user.id);
   // Include stream_key for own profile
   const { password_hash, ...rest } = user;
   res.json(rest);
@@ -269,11 +348,11 @@ app.get('/api/live', (req, res) => {
   res.json(liveChannels);
 });
 
-app.get('/api/channels/:username', (req, res) => {
+app.get('/api/channels/:username', optionalAuth, (req, res) => {
   const user = getUserByUsername(req.params.username);
   if (!user) return res.status(404).json({ error: 'Kanal nicht gefunden' });
 
-  const videos = getVideosByUser(user.id);
+  const videos = getVideosByUser(user.id, { includeInternal: !!req.userId });
   const { password_hash, ...publicUser } = user;
   if (user.is_live === 1) {
     publicUser.stream_key = user.stream_key;
@@ -287,22 +366,63 @@ app.get('/api/channels/:username', (req, res) => {
 // VIDEO ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
-app.get('/api/videos', (req, res) => {
+app.get('/api/videos', optionalAuth, (req, res) => {
   const { search, category, limit, offset } = req.query;
-  const videos = getAllVideos({ search, category, limit: parseInt(limit) || 50, offset: parseInt(offset) || 0 });
+  const videos = getAllVideos({
+    search, category,
+    limit: parseInt(limit) || 50,
+    offset: parseInt(offset) || 0,
+    includeInternal: !!req.userId,
+  });
   res.json(videos);
 });
 
 app.get('/api/videos/:id', optionalAuth, (req, res) => {
   const video = getVideoById(req.params.id);
-  if (!video) return res.status(404).json({ error: 'Video nicht gefunden' });
-  incrementVideoViews(req.params.id);
+  // Interne Videos sollen sich nicht einmal durch ein 403 verraten.
+  if (!video || !mayAccess(video, req)) return res.status(404).json({ error: 'Video nicht gefunden' });
   res.json(video);
 });
 
-app.get('/api/videos/:id/stream', (req, res) => {
+/**
+ * Aufrufe zählen.
+ *
+ * Vorher zählte jeder Abruf der Metadaten mit — also auch jedes Neuladen der
+ * Seite, jeder geteilte Link, den jemand nur öffnet, und jeder Crawler. Gezählt
+ * wird jetzt, wenn die Wiedergabe wirklich beginnt, und pro Gerät nur einmal
+ * innerhalb eines Zeitfensters.
+ */
+const VIEW_WINDOW_MS = 1000 * 60 * 60 * 6;
+const recentViews = new Map(); // "videoId|absender" → Zeitstempel
+
+function alreadyCounted(videoId, req) {
+  const sender = req.headers['x-forwarded-for']?.split(',')[0].trim() || req.socket.remoteAddress || 'unbekannt';
+  const key = `${videoId}|${sender}`;
+  const now = Date.now();
+  const last = recentViews.get(key);
+
+  if (last && now - last < VIEW_WINDOW_MS) return true;
+  recentViews.set(key, now);
+
+  // Aufräumen, damit die Map nicht unbegrenzt wächst.
+  if (recentViews.size > 20000) {
+    for (const [k, t] of recentViews) {
+      if (now - t >= VIEW_WINDOW_MS) recentViews.delete(k);
+    }
+  }
+  return false;
+}
+
+app.post('/api/videos/:id/view', (req, res) => {
   const video = getVideoById(req.params.id);
-  if (!video) return res.status(404).json({ error: 'Video not found' });
+  if (!video) return res.status(404).json({ error: 'Video nicht gefunden' });
+  if (!alreadyCounted(req.params.id, req)) incrementVideoViews(req.params.id);
+  res.json({ success: true });
+});
+
+app.get('/api/videos/:id/stream', optionalAuth, (req, res) => {
+  const video = getVideoById(req.params.id);
+  if (!video || !mayAccess(video, req)) return res.status(404).json({ error: 'Video not found' });
 
   const videoPath = path.join(VIDEOS_DIR, video.filename);
   if (!fs.existsSync(videoPath)) return res.status(404).json({ error: 'Video file missing' });
@@ -317,7 +437,7 @@ app.get('/api/videos/:id/stream', (req, res) => {
 
 app.post('/api/upload', requireAuth, upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]), (req, res) => {
   try {
-    const { title, description, category, duration, customThumbnailData } = req.body;
+    const { title, description, category, duration, customThumbnailData, visibility } = req.body;
     const videoFile = req.files?.['video']?.[0];
     if (!videoFile) return res.status(400).json({ error: 'Video file is required' });
 
@@ -343,6 +463,7 @@ app.post('/api/upload', requireAuth, upload.fields([{ name: 'video', maxCount: 1
       category: category || 'General',
       duration: parseFloat(duration) || 0,
       transcodeStatus: transcodingAvailable ? 'pending' : 'skipped',
+      visibility,
     });
 
     const user = getUserById(req.userId);

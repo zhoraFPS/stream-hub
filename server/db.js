@@ -108,8 +108,88 @@ function migrate() {
   add('transcode_status', "TEXT DEFAULT 'skipped'");
   add('transcode_error', "TEXT DEFAULT ''");
   add('height', 'INTEGER DEFAULT 0');
+  // public = für alle sichtbar, internal = nur für angemeldete Redaktion
+  add('visibility', "TEXT DEFAULT 'public'");
 
   db.exec('CREATE INDEX IF NOT EXISTS idx_videos_transcode ON videos(transcode_status)');
+
+  setupSearchIndex();
+}
+
+/**
+ * Volltextsuche.
+ *
+ * Vorher lief die Suche über `title LIKE '%wort%'`. Ein führendes Platzhalter-
+ * zeichen schließt jeden Index aus, SQLite muss also jede Zeile anfassen — bei
+ * ein paar hundert Videos unauffällig, bei ein paar zehntausend nicht mehr.
+ * FTS5 kehrt das um und findet zusätzlich Wortanfänge.
+ *
+ * `content='videos'` heißt: der Index speichert die Texte nicht doppelt,
+ * sondern verweist auf die Tabelle. Die Trigger halten beides zusammen.
+ */
+let searchIndexReady = false;
+
+export function hasSearchIndex() {
+  return searchIndexReady;
+}
+
+function setupSearchIndex() {
+  try {
+    db.exec(`
+      CREATE VIRTUAL TABLE IF NOT EXISTS videos_fts USING fts5(
+        title, description, content='videos', content_rowid='rowid'
+      );
+
+      CREATE TRIGGER IF NOT EXISTS videos_fts_insert AFTER INSERT ON videos BEGIN
+        INSERT INTO videos_fts(rowid, title, description)
+        VALUES (new.rowid, new.title, new.description);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS videos_fts_delete AFTER DELETE ON videos BEGIN
+        INSERT INTO videos_fts(videos_fts, rowid, title, description)
+        VALUES ('delete', old.rowid, old.title, old.description);
+      END;
+
+      CREATE TRIGGER IF NOT EXISTS videos_fts_update AFTER UPDATE ON videos BEGIN
+        INSERT INTO videos_fts(videos_fts, rowid, title, description)
+        VALUES ('delete', old.rowid, old.title, old.description);
+        INSERT INTO videos_fts(rowid, title, description)
+        VALUES (new.rowid, new.title, new.description);
+      END;
+    `);
+
+    // Bestand nachtragen — beim ersten Start und nach einem Wiederaufbau.
+    const indexed = db.prepare('SELECT COUNT(*) AS c FROM videos_fts').get().c;
+    const total = db.prepare('SELECT COUNT(*) AS c FROM videos').get().c;
+    if (indexed !== total) {
+      db.exec("INSERT INTO videos_fts(videos_fts) VALUES('rebuild')");
+      console.log(`[DB] Suchindex aufgebaut (${total} Videos)`);
+    }
+
+    searchIndexReady = true;
+  } catch (err) {
+    // Ohne FTS5 im SQLite-Build läuft die Suche weiter wie bisher.
+    console.warn('[DB] Volltextsuche nicht verfügbar, weiche auf LIKE aus:', err.message);
+    searchIndexReady = false;
+  }
+}
+
+/**
+ * Nutzereingabe in einen FTS5-Ausdruck übersetzen.
+ *
+ * Roh durchgereicht wäre die Eingabe eine Fehlerquelle: Zeichen wie " oder -
+ * sind in FTS5 Syntax und lassen die Abfrage werfen. Jedes Wort wird deshalb
+ * in Anführungszeichen gesetzt und mit * ergänzt, damit auch "Press" schon
+ * "Pressekonferenz" findet.
+ */
+function toMatchQuery(input) {
+  const tokens = String(input)
+    .replace(/["*()]/g, ' ')
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 12);
+  if (!tokens.length) return null;
+  return tokens.map(t => `"${t}"*`).join(' ');
 }
 
 // ── User helpers ──────────────────────────────────────────────────────────────
@@ -176,13 +256,14 @@ export function safeUser(user) {
 
 // ── Video helpers ─────────────────────────────────────────────────────────────
 
-export function createVideo({ id, userId, title, description, filename, thumbnailUrl, category, duration, transcodeStatus }) {
+export function createVideo({ id, userId, title, description, filename, thumbnailUrl, category, duration, transcodeStatus, visibility }) {
   getDb().prepare(`
-    INSERT INTO videos (id, user_id, title, description, filename, thumbnail_url, category, duration, transcode_status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO videos (id, user_id, title, description, filename, thumbnail_url, category, duration, transcode_status, visibility)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, userId, title, description, filename, thumbnailUrl || '',
-    category || 'General', duration || 0, transcodeStatus || 'skipped'
+    category || 'General', duration || 0, transcodeStatus || 'skipped',
+    visibility === 'internal' ? 'internal' : 'public'
   );
   return getDb().prepare('SELECT * FROM videos WHERE id = ?').get(id);
 }
@@ -227,28 +308,62 @@ export function getVideoById(id) {
   `).get(id);
 }
 
-export function getVideosByUser(userId) {
+export function getVideosByUser(userId, { includeInternal = false } = {}) {
   return getDb().prepare(`
     SELECT v.*, u.username, u.display_name, u.avatar_url,
            COALESCE(u.display_name, u.username, 'VfL Redaktion') AS uploader
     FROM videos v LEFT JOIN users u ON v.user_id = u.id
-    WHERE v.user_id = ? ORDER BY v.created_at DESC
+    WHERE v.user_id = ?
+      ${includeInternal ? '' : "AND v.visibility = 'public'"}
+    ORDER BY v.created_at DESC
   `).all(userId);
 }
 
-export function getAllVideos({ category, search, limit = 50, offset = 0 } = {}) {
-  let sql = `
+export function getAllVideos({ category, search, limit = 50, offset = 0, forceLike = false, includeInternal = false } = {}) {
+  const db = getDb();
+  const params = [];
+
+  let from = 'FROM videos v LEFT JOIN users u ON v.user_id = u.id';
+  let where = includeInternal ? 'WHERE 1=1' : "WHERE v.visibility = 'public'";
+  let order = 'ORDER BY v.created_at DESC';
+
+  const match = search && searchIndexReady && !forceLike ? toMatchQuery(search) : null;
+
+  if (match) {
+    // Treffer zuerst nach Relevanz, bei Gleichstand das Neuere zuerst.
+    from += ' JOIN videos_fts f ON f.rowid = v.rowid';
+    where += ' AND videos_fts MATCH ?';
+    params.push(match);
+    order = 'ORDER BY f.rank, v.created_at DESC';
+  } else if (search) {
+    where += ' AND (v.title LIKE ? OR v.description LIKE ?)';
+    params.push(`%${search}%`, `%${search}%`);
+  }
+
+  if (category && category !== 'All') {
+    where += ' AND v.category = ?';
+    params.push(category);
+  }
+
+  params.push(limit, offset);
+
+  const sql = `
     SELECT v.*, u.username, u.display_name, u.avatar_url,
            COALESCE(u.display_name, u.username, 'VfL Redaktion') AS uploader
-    FROM videos v LEFT JOIN users u ON v.user_id = u.id
-    WHERE 1=1
+    ${from}
+    ${where}
+    ${order}
+    LIMIT ? OFFSET ?
   `;
-  const params = [];
-  if (category && category !== 'All') { sql += ' AND v.category = ?'; params.push(category); }
-  if (search) { sql += ' AND (v.title LIKE ? OR v.description LIKE ?)'; params.push(`%${search}%`, `%${search}%`); }
-  sql += ' ORDER BY v.created_at DESC LIMIT ? OFFSET ?';
-  params.push(limit, offset);
-  return getDb().prepare(sql).all(...params);
+
+  try {
+    return db.prepare(sql).all(...params);
+  } catch (err) {
+    if (!match) throw err;
+    // Sollte die Eingabe FTS5 doch zerlegen, lieber ein Ergebnis als ein Fehler.
+    console.warn('[DB] Volltextsuche fehlgeschlagen, weiche auf LIKE aus:', err.message);
+    return getAllVideos({ category, search, limit, offset, forceLike: true, includeInternal });
+  }
 }
 
 export function incrementVideoViews(id) {

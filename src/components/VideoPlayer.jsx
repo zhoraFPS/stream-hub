@@ -36,6 +36,23 @@ export default function VideoPlayer({
     setLiked(false);
   }, [video.id]);
 
+  // Ein Aufruf ist eine Wiedergabe, kein Seitenaufruf — deshalb erst melden,
+  // wenn wirklich Bild läuft, und pro Video nur einmal.
+  useEffect(() => {
+    const element = videoRef.current;
+    if (!element) return undefined;
+
+    let reported = false;
+    const report = () => {
+      if (reported) return;
+      reported = true;
+      fetch(`/api/videos/${video.id}/view`, { method: 'POST' }).catch(() => {});
+    };
+
+    element.addEventListener('playing', report);
+    return () => element.removeEventListener('playing', report);
+  }, [video.id]);
+
   useEffect(() => {
     // Aufbau um einen Frame verzögert: React ruft Effekte im Entwicklungsmodus
     // doppelt auf, und Plyrs destroy() räumt asynchron auf — die zweite Instanz

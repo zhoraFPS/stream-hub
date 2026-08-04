@@ -39,6 +39,9 @@ export default function VideoCard({ video, onSelectVideo, onDeleteVideo, compact
           {isPreparing && (
             <span className="b-badge b-badge--prepare">Wird aufbereitet</span>
           )}
+          {video.visibility === 'internal' && (
+            <span className="b-badge b-badge--internal">Intern</span>
+          )}
         </div>
 
         <div className="b-card-article__content">

@@ -362,6 +362,13 @@ export function setVideoMedia(id, { hlsPath, duration, height, thumbnailUrl }) {
  * Alles, was beim letzten Lauf nicht fertig wurde. 'processing' zählt mit:
  * wer beim Neustart mittendrin war, ist es jetzt nicht mehr.
  */
+/** Alle belegten Dateinamen — für den Abgleich mit dem, was auf der Platte liegt. */
+export function videoFilenames() {
+  return new Set(
+    getDb().prepare("SELECT filename FROM videos WHERE filename != ''").all().map(r => r.filename)
+  );
+}
+
 export function getUnfinishedTranscodes() {
   return getDb().prepare(`
     SELECT * FROM videos

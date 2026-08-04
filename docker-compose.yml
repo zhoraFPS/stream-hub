@@ -21,6 +21,15 @@ services:
       # durchgereicht. Erst einschalten, wenn ein Testupload damit durchläuft —
       # ohne passenden Treiber schlägt jeder Auftrag fehl.
       # - TRANSCODE_HWACCEL=vaapi
+      #
+      # Live-Übertragungen mitschneiden und danach als internes Video in die
+      # Mediathek legen. Standard ist an; RECORD_LIVE=false schaltet es ab.
+      # Der Mitschnitt kopiert nur den fertigen Datenstrom, kostet also kaum
+      # Rechenzeit — Platz allerdings schon, etwa in Größe der Übertragung.
+      # - RECORD_LIVE=false
+      # Adresse, unter der MediaMTX im Docker-Netz erreichbar ist. Nur ändern,
+      # wenn der Dienst anders heißt als unten.
+      # - MEDIAMTX_RTMP_URL=rtmp://mediamtx:1935/live
     volumes:
       - ./server/data:/app/server/data
     devices:

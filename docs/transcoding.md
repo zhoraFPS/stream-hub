@@ -98,6 +98,35 @@ Was beim Beenden `pending` oder `processing` war, wird beim nächsten Start
 erneut eingereiht. `processing` zählt mit — wer mittendrin war, ist es nach dem
 Neustart nicht mehr.
 
+## Live-Mitschnitte
+
+Beginnt eine OBS-Übertragung, meldet MediaMTX das an `/api/internal/obs-start`.
+Von dort startet ein `ffmpeg`, das den Datenstrom von MediaMTX zurückliest und
+**ohne Neukodierung** (`-c copy`) mitschreibt — das kostet kaum Rechenzeit,
+was während einer Übertragung zählt.
+
+Geschrieben wird fragmentiertes MP4. Bricht der Server mitten im Spiel ab,
+bleibt die Datei trotzdem abspielbar; ein gewöhnliches MP4 wäre ohne den
+abschließenden Index unbrauchbar.
+
+Drei Wege führen aus einem Mitschnitt in die Mediathek:
+
+1. **Regulärer Schluss** — MediaMTX ruft `obs-stop`, ffmpeg bekommt ein „q"
+   und schreibt zu Ende.
+2. **Abriss der Übertragung** — endet die Quelle von selbst, gibt es kein
+   `obs-stop` mehr. Der Mitschnitt wird dann direkt beim Beenden übernommen.
+3. **Serverabsturz** — beim nächsten Start werden liegengebliebene
+   `live-u<id>-<zeit>.mp4` ohne Datenbankeintrag eingesammelt.
+
+Jeder Mitschnitt landet als **internes** Video: Rohmaterial ist noch nichts
+Veröffentlichtes. Die Redaktion gibt ihm über „Bearbeiten" einen Titel und
+schaltet es dann öffentlich. Länge und Standbild trägt die Aufbereitung nach.
+
+> **Auf der NUC prüfen:** MediaMTX ist mit `authMethod: http` konfiguriert und
+> fragt auch beim *Lesen* eines Pfades bei uns nach. `/api/internal/stream-auth`
+> erkennt den Stream-Key aus dem Pfad und lässt ihn durch — verifiziert ist das
+> bisher nur anhand des Codes, nicht an einer laufenden Übertragung.
+
 ## Platzbedarf
 
 Die Segmente kommen **zusätzlich** zur Originaldatei auf die Platte, grob in

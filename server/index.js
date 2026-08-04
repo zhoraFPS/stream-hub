@@ -18,9 +18,13 @@ import {
   regenerateStreamKey, getAllLiveChannels, safeUser,
   createVideo, getVideoById, getVideosByUser, getAllVideos, getTaxonomy,
   incrementVideoViews, updateVideo, deleteVideo, startLiveSession, endLiveSession,
-  ROLES, roleAtLeast, countUsers, countAdmins, listUsers, setUserRole, deleteUser
+  ROLES, roleAtLeast, countUsers, countAdmins, listUsers, setUserRole, deleteUser,
+  videoFilenames
 } from './db.js';
 import { enqueue as enqueueTranscode, resumePending, isFfmpegAvailable, queueState } from './transcode.js';
+import {
+  startRecording, stopRecording, isRecordingEnabled, activeRecordings, findOrphanRecordings,
+} from './recorder.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -286,6 +290,54 @@ function queueTranscode(video) {
   if (!transcodingAvailable) return;
   const job = buildTranscodeJob(video);
   if (job) enqueueTranscode(job);
+}
+
+/**
+ * Aus einem beendeten Live-Mitschnitt einen Eintrag in der Mediathek machen.
+ *
+ * Bewusst als „intern": eine Rohaufzeichnung ist noch kein veröffentlichtes
+ * Video. Die Redaktion sieht sie, gibt ihr über „Bearbeiten" einen Titel und
+ * schaltet sie dann öffentlich — statt dass ungeprüftes Material sofort auf
+ * der Startseite steht.
+ */
+function archiveFromFile({ filename, user, startedAt = Date.now(), title }) {
+  const vodId = randomUUID();
+  const wann = new Date(startedAt).toLocaleDateString('de-DE', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+  });
+
+  const video = createVideo({
+    id: vodId,
+    userId: user?.id ?? null,
+    title: title || `Aufzeichnung vom ${wann}`,
+    description: 'Automatischer Mitschnitt einer Live-Übertragung.',
+    filename,
+    thumbnailUrl: '',
+    category: 'Spiele',
+    duration: 0,          // ffprobe trägt die echte Länge bei der Aufbereitung nach
+    transcodeStatus: transcodingAvailable ? 'pending' : 'skipped',
+    visibility: 'internal',
+  });
+
+  console.log(`[Aufzeichnung] als Video übernommen: ${video.title}`);
+  queueTranscode(video);
+  publishEvent('videos', { reason: 'recording', id: vodId });
+  return video;
+}
+
+async function archiveRecording(streamKey, user) {
+  try {
+    const ergebnis = await stopRecording(streamKey);
+    if (!ergebnis) return;
+    archiveFromFile({
+      filename: ergebnis.filename,
+      user,
+      startedAt: Date.now() - ergebnis.seconds * 1000,
+      title: user?.live_title || undefined,
+    });
+  } catch (err) {
+    console.error(`[Aufzeichnung] ${streamKey}: Übernahme fehlgeschlagen —`, err.message);
+  }
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
@@ -705,6 +757,19 @@ app.post('/api/internal/obs-start', (req, res) => {
         thumbnailUrl: user.avatar_url || 'https://images.unsplash.com/photo-1542751371-adc38448a05e?w=800&q=80',
       };
       console.log(`[Webhook] Stream started for user: ${user.username}`);
+      startRecording({
+        streamKey,
+        userId: user.id,
+        targetDir: VIDEOS_DIR,
+        // Reißt die Übertragung ab, kommt von MediaMTX kein Stopp mehr — dann
+        // muss das bereits Aufgezeichnete von hier aus in die Mediathek.
+        onClosed: (ergebnis) => archiveFromFile({
+          filename: ergebnis.filename,
+          user,
+          startedAt: Date.now() - ergebnis.seconds * 1000,
+          title: user.live_title || undefined,
+        }),
+      });
       publishEvent('live', { active: true, username: user.username });
       return res.sendStatus(200);
     }
@@ -728,7 +793,12 @@ app.post('/api/internal/obs-stop', (req, res) => {
       }
       console.log(`[Webhook] Stream ended for user: ${user.username}`);
       publishEvent('live', { active: false, username: user.username });
-      return res.sendStatus(200);
+      // Sofort antworten: MediaMTX beendet das Hook-Skript, sobald der Aufruf
+      // durch ist. Das Wegschreiben der Aufzeichnung dauert länger und läuft
+      // deshalb im Hintergrund weiter.
+      res.sendStatus(200);
+      archiveRecording(streamKey, user);
+      return undefined;
     }
   }
 
@@ -808,6 +878,7 @@ app.get('/api/system/info', (req, res) => {
     totalMem: Math.round(os.totalmem() / (1024 ** 3)) + ' GB',
     freeMem: Math.round(os.freemem() / (1024 ** 3)) + ' GB',
     transcoding: { available: transcodingAvailable, ...queueState() },
+    recording: { enabled: isRecordingEnabled(), active: activeRecordings().length },
   });
 });
 
@@ -999,7 +1070,37 @@ isFfmpegAvailable().then(available => {
   }
   console.log(`[Transcode] bereit${process.env.TRANSCODE_HWACCEL ? ` (${process.env.TRANSCODE_HWACCEL})` : ''}`);
   resumePending(buildTranscodeJob);
+}).finally(() => {
+  // Erst hier: archiveFromFile entscheidet anhand von transcodingAvailable, ob
+  // ein Mitschnitt zur Aufbereitung eingereiht wird. Vorher wäre die Antwort
+  // immer „nein" und die Datei bliebe unaufbereitet liegen.
+  recoverOrphanRecordings();
 });
+
+/**
+ * Liegen gebliebene Mitschnitte einsammeln.
+ *
+ * Endet der Prozess mitten in einer Übertragung, läuft niemand mehr durch das
+ * Beenden — die Datei liegt aber da und ist dank fragmentiertem MP4 spielbar.
+ * Ohne diesen Schritt bliebe sie für immer unsichtbar auf der Platte.
+ */
+function recoverOrphanRecordings() {
+  if (!isRecordingEnabled()) return;
+
+  const bekannt = videoFilenames();
+  const verwaist = findOrphanRecordings(VIDEOS_DIR, name => bekannt.has(name));
+  if (!verwaist.length) return;
+
+  console.log(`[Aufzeichnung] ${verwaist.length} liegengebliebene(r) Mitschnitt(e) gefunden`);
+  for (const eintrag of verwaist) {
+    const user = getUserById(eintrag.userId);
+    if (!user) {
+      console.warn(`[Aufzeichnung] ${eintrag.filename}: Konto ${eintrag.userId} existiert nicht mehr, übersprungen`);
+      continue;
+    }
+    archiveFromFile({ filename: eintrag.filename, user, startedAt: eintrag.startedAt });
+  }
+}
 
 httpServer.listen(PORT, '0.0.0.0', () => {
   const localIp = getLocalIp();

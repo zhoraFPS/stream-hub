@@ -9,6 +9,39 @@ import { categoryLabel } from '../constants/categories';
 import { allows, subscribeConsent } from '../utils/consent';
 import { loadCastSdk, castMedia } from '../utils/cast';
 
+/**
+ * Plyr spricht ab Werk Englisch. Auf einer Vereinsseite, die sonst durchgehend
+ * deutsch ist, fällt ein „Settings"-Menü sofort auf.
+ */
+const PLYR_DEUTSCH = {
+  restart: 'Neu starten',
+  play: 'Abspielen',
+  pause: 'Pause',
+  seek: 'Suchen',
+  seekLabel: '{currentTime} von {duration}',
+  played: 'Abgespielt',
+  buffered: 'Geladen',
+  currentTime: 'Aktuelle Zeit',
+  duration: 'Dauer',
+  volume: 'Lautstärke',
+  mute: 'Stummschalten',
+  unmute: 'Ton an',
+  enterFullscreen: 'Vollbild',
+  exitFullscreen: 'Vollbild beenden',
+  frameTitle: 'Player für {title}',
+  captions: 'Untertitel',
+  settings: 'Einstellungen',
+  pip: 'Bild im Bild',
+  menuBack: 'Zurück',
+  speed: 'Geschwindigkeit',
+  normal: 'Normal',
+  quality: 'Qualität',
+  qualityLabel: { 0: 'Automatisch' },
+  reset: 'Zurücksetzen',
+  disabled: 'Aus',
+  enabled: 'An',
+};
+
 export default function VideoPlayer({
   video, allVideos, onSelectVideo, onBack, onOpenChannel, authToken, currentUser, onVideoUpdated,
 }) {
@@ -76,6 +109,23 @@ export default function VideoPlayer({
       if (cancelled || !videoRef.current) return;
       const element = videoRef.current;
 
+      /** Plyr braucht die Qualitätsstufen beim Erzeugen — nachrüsten geht nicht. */
+      const starte = (extras = {}) => {
+        if (cancelled) return;
+        player = new Plyr(element, {
+          autoplay: true,
+          controls: ['play-large', 'play', 'progress', 'current-time', 'duration',
+                     'mute', 'volume', 'settings', 'pip', 'airplay', 'fullscreen'],
+          settings: ['quality', 'speed'],
+          speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
+          tooltips: { controls: true, seek: true },
+          keyboard: { focused: true, global: true },
+          i18n: PLYR_DEUTSCH,
+          ...extras,
+        });
+        playerRef.current = player;
+      };
+
       if (hlsSrc) {
         // hls.js hat Vorrang, wo es laufen kann: manche Chromium-Browser melden
         // native HLS-Unterstützung, spielen es aber unzuverlässig ab. Ohne
@@ -87,15 +137,38 @@ export default function VideoPlayer({
         if (hasMediaSource) {
           const { default: Hls } = await import('hls.js');
           if (cancelled || !videoRef.current) return;
+
           if (Hls.isSupported()) {
             hls = new Hls({ enableWorker: true });
             hls.loadSource(hlsSrc);
             hls.attachMedia(element);
-          } else if (element.canPlayType('application/vnd.apple.mpegurl')) {
-            element.src = hlsSrc;
-          } else {
-            element.src = progressiveUrl;
+
+            // Erst wenn die Playlist gelesen ist, stehen die Stufen fest.
+            hls.on(Hls.Events.MANIFEST_PARSED, () => {
+              if (cancelled || playerRef.current) return;
+              const stufen = hls.levels.map(l => l.height).filter(Boolean);
+              const eindeutig = [...new Set(stufen)].sort((a, b) => b - a);
+
+              starte({
+                quality: {
+                  default: 0,               // 0 steht für die automatische Wahl
+                  options: [0, ...eindeutig],
+                  forced: true,
+                  onChange: (hoehe) => {
+                    if (!hls) return;
+                    // Ohne Auswahl entscheidet hls.js weiter selbst.
+                    if (!hoehe) { hls.currentLevel = -1; return; }
+                    const index = hls.levels.findIndex(l => l.height === hoehe);
+                    if (index >= 0) hls.currentLevel = index;
+                  },
+                },
+              });
+            });
+            return;
           }
+
+          if (element.canPlayType('application/vnd.apple.mpegurl')) element.src = hlsSrc;
+          else element.src = progressiveUrl;
         } else if (element.canPlayType('application/vnd.apple.mpegurl')) {
           element.src = hlsSrc;   // Safari auf dem iPhone spielt HLS direkt
         } else {
@@ -105,17 +178,8 @@ export default function VideoPlayer({
         element.src = progressiveUrl;
       }
 
-      if (cancelled) return;
-      player = new Plyr(element, {
-        autoplay: true,
-        controls: ['play-large', 'play', 'progress', 'current-time', 'duration',
-                   'mute', 'volume', 'settings', 'pip', 'airplay', 'fullscreen'],
-        settings: ['speed'],
-        speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
-        tooltips: { controls: true, seek: true },
-        keyboard: { focused: true, global: true },
-      });
-      playerRef.current = player;
+      // Ohne Bitratenleiter gibt es nichts zu wählen — dann kein Qualitätsmenü.
+      starte({ settings: ['speed'] });
     });
 
     return () => {

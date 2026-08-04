@@ -102,6 +102,19 @@ function migrate() {
     console.log(`[DB] Spalte videos.${name} ergänzt`);
   };
 
+  const userColumns = new Set(db.prepare('PRAGMA table_info(users)').all().map(c => c.name));
+  if (!userColumns.has('role')) {
+    // viewer = darf zusehen, editor = darf hochladen und senden, admin = darf alles
+    db.exec("ALTER TABLE users ADD COLUMN role TEXT DEFAULT 'viewer'");
+    // Bestandskonten waren bisher uneingeschränkt — Rechte nicht still wegnehmen.
+    db.exec("UPDATE users SET role = 'admin'");
+    console.log('[DB] Spalte users.role ergänzt, Bestandskonten als admin übernommen');
+  }
+
+  // Das Upload-Formular schickt Schlagworte seit jeher mit, der Server hat sie
+  // nie gelesen. Jetzt werden sie wenigstens aufbewahrt.
+  add('tags', "TEXT DEFAULT ''");
+
   // Pfad zur master.m3u8 relativ zu /uploads, leer solange nur das Original da ist
   add('hls_path', "TEXT DEFAULT ''");
   // pending | processing | ready | failed | skipped
@@ -207,15 +220,51 @@ function toMatchQuery(input) {
 
 // ── User helpers ──────────────────────────────────────────────────────────────
 
-export function createUser({ username, email, passwordHash }) {
+export function createUser({ username, email, passwordHash, role }) {
   const db = getDb();
   const streamKey = randomUUID().replace(/-/g, '');
   const stmt = db.prepare(`
-    INSERT INTO users (username, email, password_hash, stream_key, display_name)
-    VALUES (?, ?, ?, ?, ?)
+    INSERT INTO users (username, email, password_hash, stream_key, display_name, role)
+    VALUES (?, ?, ?, ?, ?, ?)
   `);
-  const result = stmt.run(username, email, passwordHash, streamKey, username);
+  const result = stmt.run(username, email, passwordHash, streamKey, username, role || 'viewer');
   return db.prepare('SELECT * FROM users WHERE id = ?').get(result.lastInsertRowid);
+}
+
+// ── Rollen ────────────────────────────────────────────────────────────────────
+
+export const ROLES = ['viewer', 'editor', 'admin'];
+
+/** Rangfolge, damit sich Rechte vergleichen lassen statt aufzuzählen. */
+const RANK = { viewer: 0, editor: 1, admin: 2 };
+
+export function roleAtLeast(role, minimum) {
+  return (RANK[role] ?? -1) >= (RANK[minimum] ?? 99);
+}
+
+export function countUsers() {
+  return getDb().prepare('SELECT COUNT(*) AS c FROM users').get().c;
+}
+
+export function listUsers() {
+  return getDb().prepare(`
+    SELECT id, username, email, display_name, role, created_at
+    FROM users ORDER BY id ASC
+  `).all();
+}
+
+export function setUserRole(userId, role) {
+  if (!ROLES.includes(role)) return false;
+  return getDb().prepare('UPDATE users SET role = ? WHERE id = ?').run(role, userId).changes > 0;
+}
+
+export function deleteUser(userId) {
+  return getDb().prepare('DELETE FROM users WHERE id = ?').run(userId).changes > 0;
+}
+
+/** Wie viele Konten dürfen noch verwalten — schützt vor dem letzten Adminverlust. */
+export function countAdmins() {
+  return getDb().prepare("SELECT COUNT(*) AS c FROM users WHERE role = 'admin'").get().c;
 }
 
 export function getUserById(id) {
@@ -271,20 +320,21 @@ export function safeUser(user) {
 
 export function createVideo({
   id, userId, title, description, filename, thumbnailUrl, category, duration,
-  transcodeStatus, visibility, team, competition, season, matchday,
+  transcodeStatus, visibility, team, competition, season, matchday, tags,
 }) {
   getDb().prepare(`
     INSERT INTO videos (
       id, user_id, title, description, filename, thumbnail_url, category, duration,
-      transcode_status, visibility, team, competition, season, matchday
+      transcode_status, visibility, team, competition, season, matchday, tags
     )
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     id, userId, title, description, filename, thumbnailUrl || '',
     category || 'General', duration || 0, transcodeStatus || 'skipped',
     visibility === 'internal' ? 'internal' : 'public',
     team || '', competition || '', season || '',
-    Number.isFinite(Number(matchday)) ? Number(matchday) || 0 : 0
+    Number.isFinite(Number(matchday)) ? Number(matchday) || 0 : 0,
+    tags || ''
   );
   return getDb().prepare('SELECT * FROM videos WHERE id = ?').get(id);
 }

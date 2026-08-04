@@ -279,6 +279,7 @@ export default function App() {
     setTimeout(() => fetchVideos(true), 500);
   };
 
+  const mayPublish = currentUser?.role === 'editor' || currentUser?.role === 'admin';
   const isLiveActive = !!activeLive || liveChannels.length > 0;
   const isFiltered = selectedCategory !== 'All' || !!searchTerm;
 
@@ -316,7 +317,7 @@ export default function App() {
 
   const navProps = {
     search: searchQuery, setSearch: setSearchQuery,
-    onOpenUpload: authToken ? () => setIsUploadOpen(true) : () => setCurrentPage('auth'),
+    onOpenUpload: mayPublish ? () => setIsUploadOpen(true) : () => setCurrentPage('auth'),
     onOpenQR: () => setIsQROpen(true),
     systemInfo, isLive: isLiveActive,
     currentUser, authToken,
@@ -387,6 +388,27 @@ export default function App() {
               authToken={authToken}
             />
           </Suspense>
+        </div>
+      </ErrorBoundary>
+    );
+  }
+
+  // Das Studio ist Redaktionswerkzeug. Der Server weist ohne Rechte ohnehin ab,
+  // aber niemand soll erst auf einer Seite landen, die er nicht nutzen darf.
+  if (currentPage === 'studio' && !mayPublish) {
+    return (
+      <ErrorBoundary>
+        <Navbar {...navProps} />
+        <div className="b-page b-page--narrow">
+          <div className="b-empty">
+            <h1 className="b-heading b-heading--500">Kein Zugriff</h1>
+            <p className="b-copy" style={{ margin: 'var(--space-2xs) auto var(--space-s)' }}>
+              Das Live-Studio ist der Redaktion vorbehalten.
+            </p>
+            <button className="b-button b-button--secondary b-button--s" onClick={goHome}>
+              Zur Mediathek
+            </button>
+          </div>
         </div>
       </ErrorBoundary>
     );
@@ -646,7 +668,9 @@ function toCardVideo(video) {
 }
 
 function canDelete(video, currentUser) {
-  return !!currentUser && video.user_id === currentUser.id;
+  if (!currentUser) return false;
+  const mayPublish = currentUser.role === 'editor' || currentUser.role === 'admin';
+  return mayPublish && video.user_id === currentUser.id;
 }
 
 // ── Hero ──────────────────────────────────────────────────────────────────────

@@ -18,6 +18,8 @@ export default function Navbar({
   variant = 'solid',
   activePage,
 }) {
+  // Hochladen und Studio sind Redaktionswerkzeuge — ein Zuschauerkonto sieht sie nicht.
+  const mayPublish = currentUser?.role === 'editor' || currentUser?.role === 'admin';
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef(null);
 
@@ -38,7 +40,7 @@ export default function Navbar({
   const navItems = [
     { key: 'home', label: 'Start', onClick: onHome },
     isLive && { key: 'live', label: 'Live', onClick: onOpenLive },
-    authToken && { key: 'studio', label: 'Studio', onClick: onOpenStudio },
+    mayPublish && { key: 'studio', label: 'Studio', onClick: onOpenStudio },
   ].filter(Boolean);
 
   return (
@@ -93,12 +95,12 @@ export default function Navbar({
 
       <div className="b-header__actions">
         {systemInfo && (
-          <button type="button" onClick={onOpenQR} className="b-button b-button--ghost b-button--s">
+          <button type="button" onClick={onOpenQR} className="b-button b-button--ghost b-button--s b-hide-narrow">
             {systemInfo.localIp || 'Netzwerk'}
           </button>
         )}
 
-        {authToken && (
+        {mayPublish && (
           <button type="button" onClick={onOpenUpload} className="b-button b-button--secondary b-button--s">
             Hochladen
           </button>
@@ -118,7 +120,7 @@ export default function Navbar({
                   ? <img src={currentUser.avatar_url} alt="" />
                   : (currentUser.display_name || currentUser.username || '?')[0].toUpperCase()}
               </span>
-              <span className="b-kicker" style={{ fontSize: 'var(--step--2)' }}>
+              <span className="b-kicker b-hide-narrow" style={{ fontSize: 'var(--step--2)' }}>
                 {currentUser.display_name || currentUser.username}
               </span>
             </button>
@@ -133,10 +135,12 @@ export default function Navbar({
                   onClick={() => { setMenuOpen(false); onOpenChannel?.(); }}>
                   Mein Kanal
                 </button>
-                <button type="button" role="menuitem" className="b-usermenu__item"
-                  onClick={() => { setMenuOpen(false); onOpenStudio?.(); }}>
-                  Live-Studio
-                </button>
+                {mayPublish && (
+                  <button type="button" role="menuitem" className="b-usermenu__item"
+                    onClick={() => { setMenuOpen(false); onOpenStudio?.(); }}>
+                    Live-Studio
+                  </button>
+                )}
                 <button type="button" role="menuitem" className="b-usermenu__item"
                   onClick={() => { setMenuOpen(false); onOpenSettings?.(); }}>
                   Einstellungen

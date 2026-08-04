@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import Icon from './ui/Icon';
 
 export default function AuthPage({ onAuth, onBack }) {
@@ -7,6 +7,18 @@ export default function AuthPage({ onAuth, onBack }) {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPw, setShowPw] = useState(false);
+
+  // 'bootstrap' = noch kein Konto vorhanden, 'open' = jeder darf, 'closed' = Redaktion vergibt
+  const [registration, setRegistration] = useState(null);
+
+  useEffect(() => {
+    fetch('/api/auth/registration')
+      .then(res => res.ok ? res.json() : null)
+      .then(data => { if (data) setRegistration(data.mode); })
+      .catch(() => setRegistration('closed'));
+  }, []);
+
+  const canRegister = registration === 'bootstrap' || registration === 'open';
 
   const set = (k) => (e) => setForm(f => ({ ...f, [k]: e.target.value }));
 
@@ -58,29 +70,33 @@ export default function AuthPage({ onAuth, onBack }) {
               {mode === 'login' ? 'Anmelden' : 'Konto anlegen'}
             </h1>
             <p className="b-copy">
-              {mode === 'login'
-                ? 'Für die Redaktion: Videos hochladen, Streams starten, Mediathek pflegen.'
-                : 'Lege ein Redaktionskonto an, um Videos zu veröffentlichen.'}
+              {registration === 'bootstrap'
+                ? 'Noch kein Konto vorhanden. Das erste Konto verwaltet die Plattform.'
+                : mode === 'login'
+                  ? 'Für die Redaktion: Videos hochladen, Streams starten, Mediathek pflegen.'
+                  : 'Lege ein Konto an, um dich anzumelden.'}
             </p>
           </div>
 
           <div className="b-panel b-panel--l">
-            <div className="b-chips" style={{ marginBottom: 'var(--space-s)' }}>
-              {[
-                { value: 'login', label: 'Anmelden' },
-                { value: 'register', label: 'Registrieren' },
-              ].map(tab => (
-                <button
-                  key={tab.value}
-                  type="button"
-                  className={`b-chip${mode === tab.value ? ' --is-active' : ''}`}
-                  aria-pressed={mode === tab.value}
-                  onClick={() => { setMode(tab.value); setError(''); }}
-                >
-                  <span className="b-chip__label">{tab.label}</span>
-                </button>
-              ))}
-            </div>
+            {canRegister && (
+              <div className="b-chips" style={{ marginBottom: 'var(--space-s)' }}>
+                {[
+                  { value: 'login', label: 'Anmelden' },
+                  { value: 'register', label: registration === 'bootstrap' ? 'Erstes Konto anlegen' : 'Registrieren' },
+                ].map(tab => (
+                  <button
+                    key={tab.value}
+                    type="button"
+                    className={`b-chip${mode === tab.value ? ' --is-active' : ''}`}
+                    aria-pressed={mode === tab.value}
+                    onClick={() => { setMode(tab.value); setError(''); }}
+                  >
+                    <span className="b-chip__label">{tab.label}</span>
+                  </button>
+                ))}
+              </div>
+            )}
 
             <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-s)' }}>
               {mode === 'register' ? (
@@ -144,6 +160,15 @@ export default function AuthPage({ onAuth, onBack }) {
               </button>
             </form>
           </div>
+
+          {registration === 'closed' && (
+            <p className="b-copy" style={{ marginTop: 'var(--space-s)' }}>
+              Konten vergibt die Redaktion. Du brauchst einen Zugang?{' '}
+              <a href="mailto:support@vfl-bochum.de" style={{ textDecoration: 'underline' }}>
+                support@vfl-bochum.de
+              </a>
+            </p>
+          )}
 
           <p className="b-meta-line__item" style={{ display: 'block', marginTop: 'var(--space-s)' }}>
             Medienportal des VfL Bochum 1848

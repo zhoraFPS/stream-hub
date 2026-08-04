@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import SectionTitle from './ui/SectionTitle';
 import Icon from './ui/Icon';
 import { formatDate } from '../utils/formatters';
@@ -79,7 +79,8 @@ export default function SettingsPage({ currentUser, authToken, onBack, onUserUpd
         Einstellungen
       </h1>
 
-      {/* Stream */}
+      {/* Stream — nur wer senden darf, braucht Zugangsdaten */}
+      {(currentUser?.role === 'editor' || currentUser?.role === 'admin') && (
       <section className="b-section">
         <SectionTitle title="Stream" />
         <div className="b-panel b-panel--l" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-s)' }}>
@@ -142,6 +143,7 @@ export default function SettingsPage({ currentUser, authToken, onBack, onUserUpd
           </div>
         </div>
       </section>
+      )}
 
       {/* Profil */}
       <section className="b-section">
@@ -180,11 +182,166 @@ export default function SettingsPage({ currentUser, authToken, onBack, onUserUpd
           <dl style={{ display: 'grid', gap: 'var(--space-2xs)' }}>
             <Row label="Benutzername" value={`@${currentUser?.username}`} />
             <Row label="E-Mail" value={currentUser?.email} />
+            <Row label="Rolle" value={ROLE_LABEL[currentUser?.role] || currentUser?.role} />
             <Row label="Dabei seit" value={formatDate(currentUser?.created_at) || '—'} />
           </dl>
         </div>
       </section>
+
+      {currentUser?.role === 'admin' && (
+        <TeamSection authToken={authToken} currentUser={currentUser} />
+      )}
     </div>
+  );
+}
+
+const ROLE_LABEL = {
+  viewer: 'Zuschauer',
+  editor: 'Redaktion',
+  admin: 'Verwaltung',
+};
+
+const ROLE_HINT = {
+  viewer: 'Darf zusehen.',
+  editor: 'Darf Videos hochladen, löschen und live senden.',
+  admin: 'Darf zusätzlich Konten verwalten.',
+};
+
+/** Nutzerverwaltung — nur für Verwaltungskonten sichtbar. */
+function TeamSection({ authToken, currentUser }) {
+  const [users, setUsers] = useState([]);
+  const [notice, setNotice] = useState(null);
+  const [busy, setBusy] = useState(false);
+  const [form, setForm] = useState({ username: '', email: '', password: '', role: 'editor' });
+
+  const headers = { Authorization: `Bearer ${authToken}` };
+
+  const load = React.useCallback(() => {
+    fetch('/api/admin/users', { headers })
+      .then(res => res.ok ? res.json() : [])
+      .then(setUsers)
+      .catch(() => {});
+  }, [authToken]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const say = (kind, text) => {
+    setNotice({ kind, text });
+    setTimeout(() => setNotice(null), 4000);
+  };
+
+  const createAccount = async (e) => {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { ...headers, 'Content-Type': 'application/json' },
+        body: JSON.stringify(form),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Konto konnte nicht angelegt werden.');
+      say('success', `Konto ${form.username} angelegt.`);
+      setForm({ username: '', email: '', password: '', role: 'editor' });
+      load();
+    } catch (err) {
+      say('error', err.message);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const changeRole = async (id, role) => {
+    const res = await fetch(`/api/admin/users/${id}`, {
+      method: 'PATCH',
+      headers: { ...headers, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ role }),
+    });
+    const data = await res.json();
+    if (!res.ok) say('error', data.error);
+    load();
+  };
+
+  const removeAccount = async (id, username) => {
+    if (!confirm(`Konto ${username} löschen? Die hochgeladenen Videos verschwinden mit.`)) return;
+    const res = await fetch(`/api/admin/users/${id}`, { method: 'DELETE', headers });
+    const data = await res.json();
+    if (!res.ok) say('error', data.error);
+    else say('success', `Konto ${username} gelöscht.`);
+    load();
+  };
+
+  return (
+    <section className="b-section">
+      <SectionTitle title="Team" count={users.length} />
+
+      <div className="b-panel b-panel--l" style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-s)' }}>
+        {notice && <div className={`b-notice b-notice--${notice.kind}`}>{notice.text}</div>}
+
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2xs)' }}>
+          {users.map(user => (
+            <div key={user.id} style={{
+              display: 'flex', alignItems: 'center', gap: 'var(--space-s)',
+              flexWrap: 'wrap', paddingBlock: 'var(--space-2xs)',
+              borderBottom: '1px solid var(--color-line)',
+            }}>
+              <div style={{ flex: '1 1 180px', minWidth: 0 }}>
+                <div className="b-heading b-heading--200">{user.display_name || user.username}</div>
+                <div className="b-meta-line">
+                  <span className="b-meta-line__item">@{user.username}</span>
+                  <span className="b-meta-line__item">{user.email}</span>
+                </div>
+              </div>
+
+              <select
+                className="b-input"
+                style={{ width: 'auto' }}
+                value={user.role}
+                aria-label={`Rolle von ${user.username}`}
+                onChange={e => changeRole(user.id, e.target.value)}
+              >
+                <option value="viewer">Zuschauer</option>
+                <option value="editor">Redaktion</option>
+                <option value="admin">Verwaltung</option>
+              </select>
+
+              <button
+                type="button"
+                className="b-button b-button--ghost b-button--s"
+                onClick={() => removeAccount(user.id, user.username)}
+                disabled={user.id === currentUser.id}
+                title={user.id === currentUser.id ? 'Das eigene Konto lässt sich nicht löschen' : undefined}
+              >
+                Löschen
+              </button>
+            </div>
+          ))}
+        </div>
+
+        <form onSubmit={createAccount} style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-2xs)' }}>
+          <span className="b-label">Konto anlegen</span>
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(160px, 1fr))', gap: 'var(--space-2xs)' }}>
+            <input className="b-input" placeholder="Benutzername" required
+              value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} />
+            <input className="b-input" type="email" placeholder="E-Mail" required autoComplete="off"
+              value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} />
+            <input className="b-input" type="password" placeholder="Passwort" required minLength={6} autoComplete="new-password"
+              value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} />
+            <select className="b-input" value={form.role} onChange={e => setForm(f => ({ ...f, role: e.target.value }))}>
+              <option value="viewer">Zuschauer</option>
+              <option value="editor">Redaktion</option>
+              <option value="admin">Verwaltung</option>
+            </select>
+          </div>
+          <p className="b-copy">{ROLE_HINT[form.role]}</p>
+          <div>
+            <button type="submit" className="b-button b-button--primary b-button--s" disabled={busy}>
+              {busy ? 'Wird angelegt…' : 'Konto anlegen'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </section>
   );
 }
 

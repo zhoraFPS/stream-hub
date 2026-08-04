@@ -17,7 +17,8 @@ import {
   getUserByStreamKey, updateUserLiveStatus, updateUserProfile,
   regenerateStreamKey, getAllLiveChannels, safeUser,
   createVideo, getVideoById, getVideosByUser, getAllVideos, getTaxonomy,
-  incrementVideoViews, deleteVideo, startLiveSession, endLiveSession
+  incrementVideoViews, deleteVideo, startLiveSession, endLiveSession,
+  ROLES, roleAtLeast, countUsers, countAdmins, listUsers, setUserRole, deleteUser
 } from './db.js';
 import { enqueue as enqueueTranscode, resumePending, isFfmpegAvailable, queueState } from './transcode.js';
 
@@ -115,14 +116,29 @@ const upload = multer({ storage, limits: { fileSize: 10 * 1024 * 1024 * 1024 } }
 // ── Auth Middleware ───────────────────────────────────────────────────────────
 function requireAuth(req, res, next) {
   const header = req.headers.authorization;
-  if (!header?.startsWith('Bearer ')) return res.status(401).json({ error: 'Not authenticated' });
+  if (!header?.startsWith('Bearer ')) return res.status(401).json({ error: 'Nicht angemeldet' });
   try {
     const payload = jwt.verify(header.slice(7), JWT_SECRET);
-    req.userId = payload.userId;
+    const user = getUserById(payload.userId);
+    if (!user) return res.status(401).json({ error: 'Konto existiert nicht mehr' });
+    req.userId = user.id;
+    // Die Rolle kommt aus der Datenbank, nicht aus dem Token: sonst behielte ein
+    // herabgestuftes Konto seine Rechte, bis der Token abläuft.
+    req.userRole = user.role || 'viewer';
     next();
   } catch {
-    res.status(401).json({ error: 'Invalid or expired token' });
+    res.status(401).json({ error: 'Sitzung abgelaufen' });
   }
+}
+
+/** Schranke für alles, was mehr als Zuschauen ist. */
+function requireRole(minimum) {
+  return (req, res, next) => requireAuth(req, res, () => {
+    if (!roleAtLeast(req.userRole, minimum)) {
+      return res.status(403).json({ error: 'Dafür fehlen dir die Rechte' });
+    }
+    next();
+  });
 }
 
 /**
@@ -136,13 +152,15 @@ function requireAuth(req, res, next) {
  */
 const MEDIA_COOKIE = 'media_session';
 
-function signMediaSession(userId, expiresAt) {
-  return createHmac('sha256', JWT_SECRET).update(`${userId}.${expiresAt}`).digest('hex');
+function signMediaSession(userId, role, expiresAt) {
+  return createHmac('sha256', JWT_SECRET).update(`${userId}.${role}.${expiresAt}`).digest('hex');
 }
 
-function issueMediaSession(res, userId) {
+function issueMediaSession(res, userId, role) {
   const expiresAt = Date.now() + 1000 * 60 * 60 * 24 * 7;
-  const value = `${userId}.${expiresAt}.${signMediaSession(userId, expiresAt)}`;
+  // Die Rolle steht mit im Cookie, damit eine Segment-Anfrage keine
+  // Datenbankabfrage auslöst — davon kommen bei einem Spiel tausende.
+  const value = `${userId}.${role}.${expiresAt}.${signMediaSession(userId, role, expiresAt)}`;
   res.cookie(MEDIA_COOKIE, value, {
     httpOnly: true, sameSite: 'lax', path: '/', maxAge: 1000 * 60 * 60 * 24 * 7,
   });
@@ -163,23 +181,29 @@ function readCookie(req, name) {
   return null;
 }
 
-function hasMediaSession(req) {
+/** Rolle aus dem Medien-Cookie, oder null wenn keins oder ungültig. */
+function mediaSessionRole(req) {
   const raw = readCookie(req, MEDIA_COOKIE);
-  if (!raw) return false;
-  const [userId, expiresAt, signature] = raw.split('.');
-  if (!userId || !expiresAt || !signature) return false;
-  if (Number(expiresAt) < Date.now()) return false;
+  if (!raw) return null;
+  const [userId, role, expiresAt, signature] = raw.split('.');
+  if (!userId || !role || !expiresAt || !signature) return null;
+  if (Number(expiresAt) < Date.now()) return null;
 
-  const expected = signMediaSession(userId, expiresAt);
-  if (expected.length !== signature.length) return false;
-  return timingSafeEqual(Buffer.from(expected), Buffer.from(signature));
+  const expected = signMediaSession(userId, role, expiresAt);
+  if (expected.length !== signature.length) return null;
+  if (!timingSafeEqual(Buffer.from(expected), Buffer.from(signature))) return null;
+  return role;
 }
 
-/** Darf dieser Abruf das Video sehen? Bearer-Token oder Medien-Cookie zählen. */
+/**
+ * Darf dieser Abruf das Video sehen? Interne Videos sind für die Redaktion —
+ * ein bloßes Zuschauerkonto reicht dafür nicht.
+ */
 function mayAccess(video, req) {
   if (!video) return false;
   if (video.visibility !== 'internal') return true;
-  return !!req.userId || hasMediaSession(req);
+  if (roleAtLeast(req.userRole, 'editor')) return true;
+  return roleAtLeast(mediaSessionRole(req), 'editor');
 }
 
 function optionalAuth(req, res, next) {
@@ -187,7 +211,11 @@ function optionalAuth(req, res, next) {
   if (header?.startsWith('Bearer ')) {
     try {
       const payload = jwt.verify(header.slice(7), JWT_SECRET);
-      req.userId = payload.userId;
+      const user = getUserById(payload.userId);
+      if (user) {
+        req.userId = user.id;
+        req.userRole = user.role || 'viewer';
+      }
     } catch {}
   }
   next();
@@ -212,7 +240,7 @@ function getLocalIp() {
 // Anzeige in der Oberfläche.
 app.use('/uploads/hls/:videoId', (req, res, next) => {
   const video = getVideoById(req.params.videoId);
-  if (video && video.visibility === 'internal' && !hasMediaSession(req)) {
+  if (video && video.visibility === 'internal' && !roleAtLeast(mediaSessionRole(req), 'editor')) {
     return res.status(403).json({ error: 'Dieses Video ist nur intern verfügbar' });
   }
   next();
@@ -264,8 +292,34 @@ function queueTranscode(video) {
 // AUTH ROUTES
 // ═══════════════════════════════════════════════════════════════════════════════
 
+/**
+ * Registrierung.
+ *
+ * Vorher stand sie jedem offen — und jedes Konto durfte hochladen. Auf einem
+ * erreichbaren Server hätte damit jeder Videos ins Vereinsportal stellen
+ * können. Jetzt gilt: das allererste Konto legt sich selbst an und wird Admin,
+ * danach vergibt die Redaktion Konten. Wer trotzdem offene Registrierung will,
+ * setzt ALLOW_PUBLIC_REGISTRATION=true — neue Konten sind dann Zuschauer.
+ */
+function registrationMode() {
+  if (countUsers() === 0) return 'bootstrap';
+  if (process.env.ALLOW_PUBLIC_REGISTRATION === 'true') return 'open';
+  return 'closed';
+}
+
+app.get('/api/auth/registration', (req, res) => {
+  res.json({ mode: registrationMode() });
+});
+
 app.post('/api/auth/register', async (req, res) => {
   try {
+    const mode = registrationMode();
+    if (mode === 'closed') {
+      return res.status(403).json({
+        error: 'Konten werden von der Redaktion vergeben. Melde dich bei support@vfl-bochum.de.',
+      });
+    }
+
     const { username, email, password } = req.body;
     if (!username || !email || !password)
       return res.status(400).json({ error: 'Username, Email und Passwort sind erforderlich' });
@@ -280,11 +334,12 @@ app.post('/api/auth/register', async (req, res) => {
     if (getUserByEmail(email)) return res.status(409).json({ error: 'Email bereits registriert' });
 
     const passwordHash = await bcrypt.hash(password, 10);
-    const user = createUser({ username, email, passwordHash });
+    // Das erste Konto muss verwalten können, sonst kommt niemand mehr rein.
+    const user = createUser({ username, email, passwordHash, role: mode === 'bootstrap' ? 'admin' : 'viewer' });
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
-    issueMediaSession(res, user.id);
+    issueMediaSession(res, user.id, user.role);
 
-    console.log(`[Auth] New user registered: ${username}`);
+    console.log(`[Auth] Neues Konto: ${username} (${user.role})`);
     res.status(201).json({ token, user: safeUser(user) });
   } catch (err) {
     console.error('[Auth] Register error:', err);
@@ -304,7 +359,7 @@ app.post('/api/auth/login', async (req, res) => {
     if (!valid) return res.status(401).json({ error: 'Ungültige Zugangsdaten' });
 
     const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
-    issueMediaSession(res, user.id);
+    issueMediaSession(res, user.id, user.role || 'viewer');
     console.log(`[Auth] Login: ${user.username}`);
     res.json({ token, user: safeUser(user) });
   } catch (err) {
@@ -322,10 +377,66 @@ app.get('/api/auth/me', requireAuth, (req, res) => {
   if (!user) return res.status(404).json({ error: 'User not found' });
   // Nach einem Neuladen liegt der Token noch im Browser, das Medien-Cookie aber
   // womöglich nicht mehr — hier wieder auffrischen.
-  issueMediaSession(res, user.id);
+  issueMediaSession(res, user.id, user.role || 'viewer');
   // Include stream_key for own profile
   const { password_hash, ...rest } = user;
   res.json(rest);
+});
+
+// ── Nutzerverwaltung (nur Admin) ──────────────────────────────────────────────
+
+app.get('/api/admin/users', requireRole('admin'), (req, res) => {
+  res.json(listUsers());
+});
+
+app.post('/api/admin/users', requireRole('admin'), async (req, res) => {
+  const { username, email, password, role } = req.body;
+  if (!username || !email || !password)
+    return res.status(400).json({ error: 'Benutzername, E-Mail und Passwort sind erforderlich' });
+  if (password.length < 6)
+    return res.status(400).json({ error: 'Passwort muss mindestens 6 Zeichen lang sein' });
+  if (!/^[a-zA-Z0-9_]+$/.test(username))
+    return res.status(400).json({ error: 'Benutzername darf nur Buchstaben, Zahlen und _ enthalten' });
+  if (role && !ROLES.includes(role))
+    return res.status(400).json({ error: 'Unbekannte Rolle' });
+  if (getUserByUsername(username)) return res.status(409).json({ error: 'Benutzername bereits vergeben' });
+  if (getUserByEmail(email)) return res.status(409).json({ error: 'E-Mail bereits registriert' });
+
+  const passwordHash = await bcrypt.hash(password, 10);
+  const user = createUser({ username, email, passwordHash, role: role || 'editor' });
+  console.log(`[Admin] ${req.userId} legte Konto an: ${username} (${user.role})`);
+  res.status(201).json(safeUser(user));
+});
+
+app.patch('/api/admin/users/:id', requireRole('admin'), (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  const { role } = req.body;
+  if (!ROLES.includes(role)) return res.status(400).json({ error: 'Unbekannte Rolle' });
+
+  const target = getUserById(targetId);
+  if (!target) return res.status(404).json({ error: 'Konto nicht gefunden' });
+
+  // Sonst sperrt sich die Redaktion selbst aus.
+  if (target.role === 'admin' && role !== 'admin' && countAdmins() <= 1) {
+    return res.status(409).json({ error: 'Das ist das letzte Adminkonto — vorher ein weiteres anlegen.' });
+  }
+
+  setUserRole(targetId, role);
+  res.json({ success: true });
+});
+
+app.delete('/api/admin/users/:id', requireRole('admin'), (req, res) => {
+  const targetId = parseInt(req.params.id, 10);
+  if (targetId === req.userId) return res.status(409).json({ error: 'Das eigene Konto lässt sich nicht löschen' });
+
+  const target = getUserById(targetId);
+  if (!target) return res.status(404).json({ error: 'Konto nicht gefunden' });
+  if (target.role === 'admin' && countAdmins() <= 1) {
+    return res.status(409).json({ error: 'Das ist das letzte Adminkonto' });
+  }
+
+  deleteUser(targetId);
+  res.json({ success: true });
 });
 
 app.patch('/api/auth/me', requireAuth, (req, res) => {
@@ -334,7 +445,7 @@ app.patch('/api/auth/me', requireAuth, (req, res) => {
   res.json({ success: true });
 });
 
-app.post('/api/auth/stream-key/regenerate', requireAuth, (req, res) => {
+app.post('/api/auth/stream-key/regenerate', requireRole('editor'), (req, res) => {
   const newKey = regenerateStreamKey(req.userId);
   res.json({ streamKey: newKey });
 });
@@ -352,7 +463,7 @@ app.get('/api/channels/:username', optionalAuth, (req, res) => {
   const user = getUserByUsername(req.params.username);
   if (!user) return res.status(404).json({ error: 'Kanal nicht gefunden' });
 
-  const videos = getVideosByUser(user.id, { includeInternal: !!req.userId });
+  const videos = getVideosByUser(user.id, { includeInternal: roleAtLeast(req.userRole, 'editor') });
   const { password_hash, ...publicUser } = user;
   if (user.is_live === 1) {
     publicUser.stream_key = user.stream_key;
@@ -372,14 +483,14 @@ app.get('/api/videos', optionalAuth, (req, res) => {
     search, category, season, competition, team,
     limit: parseInt(limit) || 50,
     offset: parseInt(offset) || 0,
-    includeInternal: !!req.userId,
+    includeInternal: roleAtLeast(req.userRole, 'editor'),
   });
   res.json(videos);
 });
 
 /** Saisons, Wettbewerbe und Mannschaften, zu denen es wirklich Videos gibt. */
 app.get('/api/taxonomy', optionalAuth, (req, res) => {
-  res.json(getTaxonomy({ includeInternal: !!req.userId }));
+  res.json(getTaxonomy({ includeInternal: roleAtLeast(req.userRole, 'editor') }));
 });
 
 app.get('/api/videos/:id', optionalAuth, (req, res) => {
@@ -440,7 +551,7 @@ app.get('/api/videos/:id/stream', optionalAuth, (req, res) => {
   });
 });
 
-app.post('/api/upload', requireAuth, upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]), (req, res) => {
+app.post('/api/upload', requireRole('editor'), upload.fields([{ name: 'video', maxCount: 1 }, { name: 'thumbnail', maxCount: 1 }]), (req, res) => {
   try {
     const {
       title, description, category, duration, customThumbnailData, visibility,
@@ -486,7 +597,7 @@ app.post('/api/upload', requireAuth, upload.fields([{ name: 'video', maxCount: 1
   }
 });
 
-app.delete('/api/videos/:id', requireAuth, (req, res) => {
+app.delete('/api/videos/:id', requireRole('editor'), (req, res) => {
   const video = getVideoById(req.params.id);
   if (!video) return res.status(404).json({ error: 'Video nicht gefunden' });
   if (video.user_id !== req.userId) return res.status(403).json({ error: 'Keine Berechtigung' });

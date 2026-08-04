@@ -19,9 +19,17 @@ export default function VideoPlayer({
   const uploaderName = video.display_name || video.username || video.uploader || 'VfL Redaktion';
   const uploaderUsername = video.username;
 
-  const streamUrl = video.videoUrl && video.videoUrl.startsWith('http')
+  // Die Originaldatei bleibt der Notnagel: sie funktioniert immer, auch wenn
+  // die Aufbereitung noch läuft oder fehlgeschlagen ist.
+  const progressiveUrl = video.videoUrl && video.videoUrl.startsWith('http')
     ? video.videoUrl
     : `/api/videos/${video.id}/stream`;
+
+  const hlsSrc = video.transcode_status === 'ready' && video.hls_path
+    ? `/uploads/${video.hls_path}`
+    : null;
+
+  const isPreparing = video.transcode_status === 'pending' || video.transcode_status === 'processing';
 
   useEffect(() => {
     setLikeCount(video.likes || 0);
@@ -35,10 +43,43 @@ export default function VideoPlayer({
     // blieb unsichtbar. Wird vor dem Frame abgebrochen, entsteht gar keine.
     let cancelled = false;
     let player = null;
+    let hls = null;
 
-    const frame = requestAnimationFrame(() => {
+    const frame = requestAnimationFrame(async () => {
       if (cancelled || !videoRef.current) return;
-      player = new Plyr(videoRef.current, {
+      const element = videoRef.current;
+
+      if (hlsSrc) {
+        // hls.js hat Vorrang, wo es laufen kann: manche Chromium-Browser melden
+        // native HLS-Unterstützung, spielen es aber unzuverlässig ab. Ohne
+        // MediaSource — also auf dem iPhone — kann hls.js ohnehin nichts
+        // ausrichten, und die Bibliothek wird dort gar nicht erst geladen.
+        const hasMediaSource = typeof window.MediaSource !== 'undefined'
+          || typeof window.ManagedMediaSource !== 'undefined';
+
+        if (hasMediaSource) {
+          const { default: Hls } = await import('hls.js');
+          if (cancelled || !videoRef.current) return;
+          if (Hls.isSupported()) {
+            hls = new Hls({ enableWorker: true });
+            hls.loadSource(hlsSrc);
+            hls.attachMedia(element);
+          } else if (element.canPlayType('application/vnd.apple.mpegurl')) {
+            element.src = hlsSrc;
+          } else {
+            element.src = progressiveUrl;
+          }
+        } else if (element.canPlayType('application/vnd.apple.mpegurl')) {
+          element.src = hlsSrc;   // Safari auf dem iPhone spielt HLS direkt
+        } else {
+          element.src = progressiveUrl;
+        }
+      } else {
+        element.src = progressiveUrl;
+      }
+
+      if (cancelled) return;
+      player = new Plyr(element, {
         autoplay: true,
         controls: ['play-large', 'play', 'progress', 'current-time', 'duration',
                    'mute', 'volume', 'settings', 'pip', 'fullscreen'],
@@ -53,10 +94,11 @@ export default function VideoPlayer({
     return () => {
       cancelled = true;
       cancelAnimationFrame(frame);
+      if (hls) { try { hls.destroy(); } catch {} }
       if (player) { try { player.destroy(); } catch {} }
       playerRef.current = null;
     };
-  }, [streamUrl]);
+  }, [hlsSrc, progressiveUrl]);
 
   const handleCopyLink = () => {
     navigator.clipboard.writeText(`${window.location.origin}/#watch=${video.id}`);
@@ -94,8 +136,17 @@ export default function VideoPlayer({
       <div className="b-watch">
         <div style={{ display: 'flex', flexDirection: 'column', gap: 'var(--space-s)', minWidth: 0 }}>
           <div className="b-stage">
-            <video ref={videoRef} src={streamUrl} playsInline controls style={{ width: '100%' }} />
+            {/* Die Quelle setzt der Effekt — je nachdem, ob eine aufbereitete
+                Fassung vorliegt oder die Originaldatei ausgeliefert wird. */}
+            <video ref={videoRef} playsInline controls style={{ width: '100%' }} />
           </div>
+
+          {isPreparing && (
+            <div className="b-notice b-notice--info">
+              Dieses Video wird gerade aufbereitet. Bis dahin läuft die Originalfassung —
+              die passt sich noch nicht an die Verbindung an.
+            </div>
+          )}
 
           <div>
             <h1 className="b-heading b-heading--500">{video.title}</h1>
@@ -141,7 +192,9 @@ export default function VideoPlayer({
               <button type="button" className="b-button b-button--ghost b-button--s" onClick={handleCopyLink}>
                 {copiedLink ? 'Link kopiert' : 'Teilen'}
               </button>
-              <a href={streamUrl} download className="b-button b-button--ghost b-button--s">
+              {/* Bewusst die Originaldatei: die aufbereitete Fassung besteht
+                  aus hunderten Segmenten und lässt sich nicht herunterladen. */}
+              <a href={progressiveUrl} download className="b-button b-button--ghost b-button--s">
                 Herunterladen
               </a>
             </div>

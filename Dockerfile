@@ -11,7 +11,10 @@ RUN npm run build
 FROM node:22-alpine
 WORKDIR /app
 
-RUN apk add --no-cache python3 make g++
+# ffmpeg bereitet Uploads zu HLS auf und zieht das Standbild.
+# libva-intel-driver/intel-media-driver werden nur gebraucht, wenn
+# TRANSCODE_HWACCEL=vaapi gesetzt ist — die NUC reicht /dev/dri bereits durch.
+RUN apk add --no-cache python3 make g++ ffmpeg libva-intel-driver intel-media-driver
 COPY package*.json ./
 RUN npm ci --only=production
 

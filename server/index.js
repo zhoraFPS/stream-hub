@@ -19,6 +19,7 @@ import {
   createVideo, getVideoById, getVideosByUser, getAllVideos,
   incrementVideoViews, deleteVideo, startLiveSession, endLiveSession
 } from './db.js';
+import { enqueue as enqueueTranscode, resumePending, isFfmpegAvailable, queueState } from './transcode.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -91,8 +92,9 @@ const DATA_DIR = path.join(__dirname, 'data');
 const UPLOADS_DIR = path.join(DATA_DIR, 'uploads');
 const VIDEOS_DIR = path.join(UPLOADS_DIR, 'videos');
 const THUMBNAILS_DIR = path.join(UPLOADS_DIR, 'thumbnails');
+const HLS_DIR = path.join(UPLOADS_DIR, 'hls');
 
-[DATA_DIR, UPLOADS_DIR, VIDEOS_DIR, THUMBNAILS_DIR].forEach(dir => {
+[DATA_DIR, UPLOADS_DIR, VIDEOS_DIR, THUMBNAILS_DIR, HLS_DIR].forEach(dir => {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 });
 
@@ -147,13 +149,47 @@ function getLocalIp() {
 }
 
 // ── Static Files ──────────────────────────────────────────────────────────────
-app.use('/uploads', express.static(UPLOADS_DIR));
+app.use('/uploads', express.static(UPLOADS_DIR, {
+  setHeaders: (res, filePath) => {
+    // Segmente bekommen einen unveränderlichen Namen und ändern sich nie mehr —
+    // die Playlist dagegen schon, sobald neu aufbereitet wird.
+    if (filePath.endsWith('.ts')) res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    else if (filePath.endsWith('.m3u8')) res.setHeader('Cache-Control', 'public, max-age=60');
+  },
+}));
 
 const DIST_DIR = path.join(__dirname, '..', 'dist');
 if (fs.existsSync(DIST_DIR)) app.use(express.static(DIST_DIR));
 
 // ── DB init ───────────────────────────────────────────────────────────────────
 getDb(); // Initialize schema on startup
+
+// ── Aufbereitung ──────────────────────────────────────────────────────────────
+
+let transcodingAvailable = false;
+
+/** Beschreibt einen Aufbereitungsauftrag für die Warteschlange. */
+function buildTranscodeJob(video) {
+  if (!video?.filename) return null;
+  const sourcePath = path.join(VIDEOS_DIR, video.filename);
+  if (!fs.existsSync(sourcePath)) return null;
+
+  return {
+    videoId: video.id,
+    sourcePath,
+    hlsRoot: HLS_DIR,
+    thumbnailsDir: THUMBNAILS_DIR,
+    publicThumbnailBase: '/uploads/thumbnails',
+    // Sobald eine Fassung fertig ist, sollen offene Seiten sie sehen.
+    onDone: (id, status) => publishEvent('videos', { reason: 'transcode', id, status }),
+  };
+}
+
+function queueTranscode(video) {
+  if (!transcodingAvailable) return;
+  const job = buildTranscodeJob(video);
+  if (job) enqueueTranscode(job);
+}
 
 // ═══════════════════════════════════════════════════════════════════════════════
 // AUTH ROUTES
@@ -306,10 +342,12 @@ app.post('/api/upload', requireAuth, upload.fields([{ name: 'video', maxCount: 1
       thumbnailUrl,
       category: category || 'General',
       duration: parseFloat(duration) || 0,
+      transcodeStatus: transcodingAvailable ? 'pending' : 'skipped',
     });
 
     const user = getUserById(req.userId);
     console.log(`[Upload] ${user?.username} uploaded: ${video.title}`);
+    queueTranscode(video);
     publishEvent('videos', { reason: 'upload', id: videoId });
     res.status(201).json({ ...video, videoUrl: `/api/videos/${videoId}/stream` });
   } catch (err) {
@@ -327,6 +365,11 @@ app.delete('/api/videos/:id', requireAuth, (req, res) => {
     const filePath = path.join(VIDEOS_DIR, video.filename);
     if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
   }
+  // Die aufbereitete Fassung liegt in einem eigenen Ordner und muss mit weg,
+  // sonst sammeln sich die Segmente auf der Platte.
+  const hlsPath = path.join(HLS_DIR, req.params.id);
+  if (fs.existsSync(hlsPath)) fs.rmSync(hlsPath, { recursive: true, force: true });
+
   deleteVideo(req.params.id, req.userId);
   publishEvent('videos', { reason: 'delete', id: req.params.id });
   res.json({ success: true });
@@ -496,7 +539,8 @@ app.get('/api/system/info', (req, res) => {
     platform: os.platform(),
     arch: os.arch(),
     totalMem: Math.round(os.totalmem() / (1024 ** 3)) + ' GB',
-    freeMem: Math.round(os.freemem() / (1024 ** 3)) + ' GB'
+    freeMem: Math.round(os.freemem() / (1024 ** 3)) + ' GB',
+    transcoding: { available: transcodingAvailable, ...queueState() },
   });
 });
 
@@ -551,17 +595,21 @@ function finishLiveStream(fileWriteStream, filename) {
     // Save as VOD in SQLite if we have a user
     if (userId) {
       const vodId = randomUUID();
-      createVideo({
+      const recording = createVideo({
         id: vodId,
         userId,
         title: `Aufzeichnung: ${title}`,
         description: 'Automatische Handy-Stream Aufzeichnung.',
         filename,
-        thumbnailUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?w=800&q=80',
+        thumbnailUrl: '',
         category: 'General',
         duration: 0,
+        transcodeStatus: transcodingAvailable ? 'pending' : 'skipped',
       });
       console.log(`[VOD] Saved phone stream recording: ${title}`);
+      // Die Aufzeichnung ist rohes WebM ohne bekannte Länge — die Aufbereitung
+      // liefert beides nach: Dauer und ein Standbild.
+      queueTranscode(recording);
       publishEvent('videos', { reason: 'recording', id: vodId });
     }
     publishEvent('live', { active: false });
@@ -667,6 +715,18 @@ if (fs.existsSync(DIST_DIR)) {
 }
 
 // ── Start Servers ─────────────────────────────────────────────────────────────
+// Erst prüfen, ob ffmpeg überhaupt da ist. Fehlt es, läuft alles weiter wie
+// bisher — die Originaldatei wird dann direkt ausgeliefert.
+isFfmpegAvailable().then(available => {
+  transcodingAvailable = available;
+  if (!available) {
+    console.warn('[Transcode] ffmpeg nicht gefunden — Videos werden unverändert ausgeliefert.');
+    return;
+  }
+  console.log(`[Transcode] bereit${process.env.TRANSCODE_HWACCEL ? ` (${process.env.TRANSCODE_HWACCEL})` : ''}`);
+  resumePending(buildTranscodeJob);
+});
+
 httpServer.listen(PORT, '0.0.0.0', () => {
   const localIp = getLocalIp();
   console.log(`

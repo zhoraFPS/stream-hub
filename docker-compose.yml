@@ -12,6 +12,15 @@ services:
       - PORT=5000
       - HTTPS_PORT=5443
       - NODE_ENV=production
+      # Ohne diese Variable erzeugt der Server beim ersten Start selbst einen
+      # Schlüssel unter server/data/.jwt-secret. Ein fester Wert hier ist besser:
+      # dann hängen die Sitzungen nicht am Volume.
+      # - JWT_SECRET=bitte-einen-langen-zufallswert-eintragen
+      #
+      # Aufbereitung über die Intel-GPU statt der CPU. /dev/dri ist unten schon
+      # durchgereicht. Erst einschalten, wenn ein Testupload damit durchläuft —
+      # ohne passenden Treiber schlägt jeder Auftrag fehl.
+      # - TRANSCODE_HWACCEL=vaapi
     volumes:
       - ./server/data:/app/server/data
     devices:

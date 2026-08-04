@@ -13,6 +13,7 @@ export default function VideoCard({ video, onSelectVideo, onDeleteVideo, compact
   const category = categoryLabel(video.category);
   const views = video.views ?? 0;
   const isLive = !!video.isLive;
+  const isPreparing = video.transcode_status === 'pending' || video.transcode_status === 'processing';
 
   return (
     <article className={`b-card-article${compact ? ' b-card-article--compact' : ''}`}>
@@ -34,6 +35,9 @@ export default function VideoCard({ video, onSelectVideo, onDeleteVideo, compact
             video.duration > 0 && (
               <span className="b-badge b-badge--duration">{formatDuration(video.duration)}</span>
             )
+          )}
+          {isPreparing && (
+            <span className="b-badge b-badge--prepare">Wird aufbereitet</span>
           )}
         </div>
 

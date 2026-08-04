@@ -85,7 +85,31 @@ function initSchema() {
     CREATE INDEX IF NOT EXISTS idx_users_is_live ON users(is_live);
   `);
 
+  migrate();
   console.log('[DB] SQLite schema initialized');
+}
+
+/**
+ * Nachträgliche Spalten. SQLite kann kein "ADD COLUMN IF NOT EXISTS",
+ * deshalb wird erst gefragt, was schon da ist. Bestandsdatenbanken laufen
+ * dadurch ohne Handgriff weiter.
+ */
+function migrate() {
+  const columns = new Set(db.prepare('PRAGMA table_info(videos)').all().map(c => c.name));
+  const add = (name, definition) => {
+    if (columns.has(name)) return;
+    db.exec(`ALTER TABLE videos ADD COLUMN ${name} ${definition}`);
+    console.log(`[DB] Spalte videos.${name} ergänzt`);
+  };
+
+  // Pfad zur master.m3u8 relativ zu /uploads, leer solange nur das Original da ist
+  add('hls_path', "TEXT DEFAULT ''");
+  // pending | processing | ready | failed | skipped
+  add('transcode_status', "TEXT DEFAULT 'skipped'");
+  add('transcode_error', "TEXT DEFAULT ''");
+  add('height', 'INTEGER DEFAULT 0');
+
+  db.exec('CREATE INDEX IF NOT EXISTS idx_videos_transcode ON videos(transcode_status)');
 }
 
 // ── User helpers ──────────────────────────────────────────────────────────────
@@ -152,12 +176,46 @@ export function safeUser(user) {
 
 // ── Video helpers ─────────────────────────────────────────────────────────────
 
-export function createVideo({ id, userId, title, description, filename, thumbnailUrl, category, duration }) {
+export function createVideo({ id, userId, title, description, filename, thumbnailUrl, category, duration, transcodeStatus }) {
   getDb().prepare(`
-    INSERT INTO videos (id, user_id, title, description, filename, thumbnail_url, category, duration)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(id, userId, title, description, filename, thumbnailUrl || '', category || 'General', duration || 0);
+    INSERT INTO videos (id, user_id, title, description, filename, thumbnail_url, category, duration, transcode_status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id, userId, title, description, filename, thumbnailUrl || '',
+    category || 'General', duration || 0, transcodeStatus || 'skipped'
+  );
   return getDb().prepare('SELECT * FROM videos WHERE id = ?').get(id);
+}
+
+// ── Aufbereitung ──────────────────────────────────────────────────────────────
+
+export function setTranscodeStatus(id, status, error = '') {
+  getDb().prepare('UPDATE videos SET transcode_status = ?, transcode_error = ? WHERE id = ?')
+    .run(status, error || '', id);
+}
+
+/** Übernimmt, was ffprobe und ffmpeg herausgefunden haben. */
+export function setVideoMedia(id, { hlsPath, duration, height, thumbnailUrl }) {
+  getDb().prepare(`
+    UPDATE videos SET
+      hls_path      = COALESCE(?, hls_path),
+      duration      = COALESCE(?, duration),
+      height        = COALESCE(?, height),
+      thumbnail_url = COALESCE(?, thumbnail_url)
+    WHERE id = ?
+  `).run(hlsPath ?? null, duration ?? null, height ?? null, thumbnailUrl ?? null, id);
+}
+
+/**
+ * Alles, was beim letzten Lauf nicht fertig wurde. 'processing' zählt mit:
+ * wer beim Neustart mittendrin war, ist es jetzt nicht mehr.
+ */
+export function getUnfinishedTranscodes() {
+  return getDb().prepare(`
+    SELECT * FROM videos
+    WHERE transcode_status IN ('pending', 'processing')
+    ORDER BY created_at ASC
+  `).all();
 }
 
 export function getVideoById(id) {

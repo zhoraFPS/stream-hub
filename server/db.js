@@ -471,12 +471,58 @@ export function getTaxonomy({ includeInternal = false } = {}) {
   };
 }
 
+/**
+ * Metadaten ändern.
+ *
+ * COALESCE statt fester Werte: der Aufruf schickt nur, was sich ändern soll,
+ * alles Übrige bleibt stehen. Datei, Aufrufe und Aufbereitungsstand sind
+ * bewusst nicht änderbar — die gehören dem Server, nicht dem Formular.
+ */
+export function updateVideo(id, felder = {}) {
+  const zahl = (v) => (v === undefined || v === null || v === '' ? null : Number(v) || 0);
+
+  getDb().prepare(`
+    UPDATE videos SET
+      title       = COALESCE(?, title),
+      description = COALESCE(?, description),
+      category    = COALESCE(?, category),
+      visibility  = COALESCE(?, visibility),
+      team        = COALESCE(?, team),
+      competition = COALESCE(?, competition),
+      season      = COALESCE(?, season),
+      matchday    = COALESCE(?, matchday),
+      tags        = COALESCE(?, tags)
+    WHERE id = ?
+  `).run(
+    felder.title ?? null,
+    felder.description ?? null,
+    felder.category ?? null,
+    felder.visibility === 'internal' || felder.visibility === 'public' ? felder.visibility : null,
+    felder.team ?? null,
+    felder.competition ?? null,
+    felder.season ?? null,
+    zahl(felder.matchday),
+    felder.tags ?? null,
+    id
+  );
+
+  return getVideoById(id);
+}
+
 export function incrementVideoViews(id) {
   getDb().prepare('UPDATE videos SET views = views + 1 WHERE id = ?').run(id);
 }
 
-export function deleteVideo(id, userId) {
-  const result = getDb().prepare('DELETE FROM videos WHERE id = ? AND user_id = ?').run(id, userId);
+/**
+ * `userId` grenzt auf die eigenen Videos ein. Wer bereits berechtigt ist —
+ * etwa die Verwaltung bei fremden Videos — ruft ohne auf; sonst liefe das
+ * Löschen ins Leere und meldete trotzdem Erfolg.
+ */
+export function deleteVideo(id, userId = null) {
+  const stmt = userId === null
+    ? getDb().prepare('DELETE FROM videos WHERE id = ?')
+    : getDb().prepare('DELETE FROM videos WHERE id = ? AND user_id = ?');
+  const result = userId === null ? stmt.run(id) : stmt.run(id, userId);
   return result.changes > 0;
 }
 

@@ -336,6 +336,8 @@ export default function App() {
                 onOpenChannel={openChannel}
                 authToken={authToken}
                 authHeaders={authHeaders}
+                currentUser={currentUser}
+                onVideoUpdated={() => fetchVideos(true)}
               />
             </Suspense>
           </Shell>
@@ -437,7 +439,7 @@ function Shell({ nav, variant, activePage, narrow, modals, children }) {
 // ── Routen mit eigenen Daten ──────────────────────────────────────────────────
 
 /** Holt das Video anhand der Adresse — auch beim direkten Aufruf eines Links. */
-function VideoRoute({ allVideos, onSelectVideo, onOpenChannel, authToken, authHeaders }) {
+function VideoRoute({ allVideos, onSelectVideo, onOpenChannel, authToken, authHeaders, currentUser, onVideoUpdated }) {
   const { id } = useParams();
   const navigate = useNavigate();
   const [video, setVideo] = useState(null);
@@ -464,6 +466,8 @@ function VideoRoute({ allVideos, onSelectVideo, onOpenChannel, authToken, authHe
       onOpenChannel={onOpenChannel}
       onBack={() => navigate('/')}
       authToken={authToken}
+      currentUser={currentUser}
+      onVideoUpdated={(neu) => { setVideo(neu); onVideoUpdated?.(neu); }}
     />
   );
 }

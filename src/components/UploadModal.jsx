@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import Icon from './ui/Icon';
-import { CATEGORIES, TEAMS, COMPETITIONS, MAX_MATCHDAY, recentSeasons } from '../constants/categories';
+import VideoMetaFields from './ui/VideoMetaFields';
+import { CATEGORIES } from '../constants/categories';
 import { formatBytes } from '../utils/formatters';
 
 export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
@@ -9,15 +10,12 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
   const [autoThumbnailData, setAutoThumbnailData] = useState(null);
   const [isCapturingThumb, setIsCapturingThumb] = useState(false);
 
-  const [title, setTitle] = useState('');
-  const [description, setDescription] = useState('');
-  const [category, setCategory] = useState(CATEGORIES[0].value);
-  const [visibility, setVisibility] = useState('public');
-  const [team, setTeam] = useState('');
-  const [competition, setCompetition] = useState('');
-  const [season, setSeason] = useState('');
-  const [matchday, setMatchday] = useState('');
-  const [tags, setTags] = useState('VfL Bochum');
+  // Die Angaben liegen gebündelt, weil VideoMetaFields sie so erwartet.
+  const [meta, setMeta] = useState({
+    title: '', description: '', category: CATEGORIES[0].value, visibility: 'public',
+    team: '', competition: '', season: '', matchday: '', tags: 'VfL Bochum',
+  });
+  const setzen = (name, wert) => setMeta(m => ({ ...m, [name]: wert }));
   const [duration, setDuration] = useState(0);
 
   const [isUploading, setIsUploading] = useState(false);
@@ -45,7 +43,7 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
     }
     setError('');
     setVideoFile(file);
-    if (!title) setTitle(file.name.replace(/\.[^/.]+$/, ''));
+    if (!meta.title) setzen('title', file.name.replace(/\.[^/.]+$/, ''));
     setIsCapturingThumb(true);
 
     const videoUrl = URL.createObjectURL(file);
@@ -92,15 +90,15 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
 
     const formData = new FormData();
     formData.append('video', videoFile);
-    formData.append('title', title || videoFile.name);
-    formData.append('description', description);
-    formData.append('category', category);
-    formData.append('visibility', visibility);
-    formData.append('team', team);
-    formData.append('competition', competition);
-    formData.append('season', season);
-    formData.append('matchday', matchday);
-    formData.append('tags', tags);
+    formData.append('title', meta.title || videoFile.name);
+    formData.append('description', meta.description);
+    formData.append('category', meta.category);
+    formData.append('visibility', meta.visibility);
+    formData.append('team', meta.team);
+    formData.append('competition', meta.competition);
+    formData.append('season', meta.season);
+    formData.append('matchday', meta.matchday);
+    formData.append('tags', meta.tags);
     formData.append('duration', String(duration));
 
     if (thumbnailFile) formData.append('thumbnail', thumbnailFile);
@@ -215,94 +213,7 @@ export default function UploadModal({ isOpen, onClose, onUploadComplete }) {
             </div>
           )}
 
-          <div className="b-field">
-            <label className="b-label" htmlFor="up-title">Titel</label>
-            <input id="up-title" className="b-input" type="text" value={title}
-              onChange={e => setTitle(e.target.value)}
-              placeholder="Testspiel VfL Bochum 1848 gegen Swansea City" />
-          </div>
-
-          <div className="b-field">
-            <label className="b-label" htmlFor="up-desc">Beschreibung</label>
-            <textarea id="up-desc" className="b-input" rows={3} value={description}
-              onChange={e => setDescription(e.target.value)}
-              placeholder="Worum geht es in diesem Video?" />
-          </div>
-
-          <div className="b-field">
-            <label className="b-label" htmlFor="up-cat">Kategorie</label>
-            <select id="up-cat" className="b-input" value={category} onChange={e => setCategory(e.target.value)}>
-              {CATEGORIES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-            </select>
-          </div>
-
-          {/* Einordnung ins Archiv — alles freiwillig. Ein Interview gehört zu
-              keinem Spieltag, ein Trainingslager-Vlog zu keinem Wettbewerb. */}
-          <fieldset style={{ border: 'none', display: 'flex', flexDirection: 'column', gap: 'var(--space-2xs)' }}>
-            <legend className="b-label" style={{ marginBottom: 'var(--space-3xs)' }}>
-              Einordnung <span style={{ textTransform: 'none', opacity: .6 }}>(optional)</span>
-            </legend>
-
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))', gap: 'var(--space-2xs)' }}>
-              <div className="b-field">
-                <label className="b-label" htmlFor="up-team">Mannschaft</label>
-                <select id="up-team" className="b-input" value={team} onChange={e => setTeam(e.target.value)}>
-                  <option value="">—</option>
-                  {TEAMS.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-
-              <div className="b-field">
-                <label className="b-label" htmlFor="up-comp">Wettbewerb</label>
-                <select id="up-comp" className="b-input" value={competition} onChange={e => setCompetition(e.target.value)}>
-                  <option value="">—</option>
-                  {COMPETITIONS.map(c => <option key={c} value={c}>{c}</option>)}
-                </select>
-              </div>
-
-              <div className="b-field">
-                <label className="b-label" htmlFor="up-season">Saison</label>
-                <select id="up-season" className="b-input" value={season} onChange={e => setSeason(e.target.value)}>
-                  <option value="">—</option>
-                  {recentSeasons().map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-
-              <div className="b-field">
-                <label className="b-label" htmlFor="up-matchday">Spieltag</label>
-                <input
-                  id="up-matchday" className="b-input" type="number" inputMode="numeric"
-                  min="1" max={MAX_MATCHDAY} placeholder="—"
-                  value={matchday} onChange={e => setMatchday(e.target.value)}
-                />
-              </div>
-            </div>
-          </fieldset>
-
-          <div className="b-field">
-            <span className="b-label">Sichtbarkeit</span>
-            <div className="b-chips">
-              {[
-                { value: 'public', label: 'Öffentlich' },
-                { value: 'internal', label: 'Nur intern' },
-              ].map(option => (
-                <button
-                  key={option.value}
-                  type="button"
-                  className={`b-chip${visibility === option.value ? ' --is-active' : ''}`}
-                  aria-pressed={visibility === option.value}
-                  onClick={() => setVisibility(option.value)}
-                >
-                  <span className="b-chip__label">{option.label}</span>
-                </button>
-              ))}
-            </div>
-            <p className="b-copy" style={{ marginTop: 'var(--space-3xs)' }}>
-              {visibility === 'public'
-                ? 'Für alle Besucherinnen und Besucher sichtbar.'
-                : 'Nur für angemeldete Redaktionskonten — taucht in der öffentlichen Mediathek nicht auf.'}
-            </p>
-          </div>
+          <VideoMetaFields werte={meta} setzen={setzen} idPrefix="up" />
 
           {isUploading && (
             <div className="b-field">

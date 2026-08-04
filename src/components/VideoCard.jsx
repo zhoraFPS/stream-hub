@@ -1,6 +1,6 @@
 import React from 'react';
 import Media from './ui/Media';
-import { formatDuration, formatDate } from '../utils/formatters';
+import { formatDuration, formatDate, formatViews } from '../utils/formatters';
 import { categoryLabel, matchLabel } from '../constants/categories';
 
 /**
@@ -50,7 +50,7 @@ export default function VideoCard({ video, onSelectVideo, onDeleteVideo, compact
           <div className="b-meta-line">
             {date && <span className="b-meta-line__item">{date}</span>}
             <span className="b-meta-line__item">{category}</span>
-            {!isLive && !compact && <span className="b-meta-line__item">{views} Aufrufe</span>}
+            {!isLive && !compact && <span className="b-meta-line__item">{formatViews(views)}</span>}
           </div>
 
           {/* Nur wenn das Video wirklich zu einem Spiel gehört. */}

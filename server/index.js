@@ -17,7 +17,7 @@ import {
   getUserByStreamKey, updateUserLiveStatus, updateUserProfile,
   regenerateStreamKey, getAllLiveChannels, safeUser,
   createVideo, getVideoById, getVideosByUser, getAllVideos, getTaxonomy,
-  incrementVideoViews, deleteVideo, startLiveSession, endLiveSession,
+  incrementVideoViews, updateVideo, deleteVideo, startLiveSession, endLiveSession,
   ROLES, roleAtLeast, countUsers, countAdmins, listUsers, setUserRole, deleteUser
 } from './db.js';
 import { enqueue as enqueueTranscode, resumePending, isFfmpegAvailable, queueState } from './transcode.js';
@@ -597,10 +597,35 @@ app.post('/api/upload', requireRole('editor'), upload.fields([{ name: 'video', m
   }
 });
 
+/**
+ * Wer darf dieses Video ändern?
+ *
+ * Die hochladende Person — und die Verwaltung. Ohne Letzteres bliebe ein Video
+ * für immer unantastbar, sobald das zugehörige Konto den Verein verlässt.
+ */
+function mayEdit(video, req) {
+  return video.user_id === req.userId || roleAtLeast(req.userRole, 'admin');
+}
+
+app.put('/api/videos/:id', requireRole('editor'), (req, res) => {
+  const video = getVideoById(req.params.id);
+  if (!video) return res.status(404).json({ error: 'Video nicht gefunden' });
+  if (!mayEdit(video, req)) return res.status(403).json({ error: 'Keine Berechtigung' });
+
+  const { title } = req.body;
+  if (title !== undefined && !String(title).trim()) {
+    return res.status(400).json({ error: 'Ein Titel ist erforderlich' });
+  }
+
+  const aktualisiert = updateVideo(req.params.id, req.body);
+  publishEvent('videos', { reason: 'update', id: req.params.id });
+  res.json(aktualisiert);
+});
+
 app.delete('/api/videos/:id', requireRole('editor'), (req, res) => {
   const video = getVideoById(req.params.id);
   if (!video) return res.status(404).json({ error: 'Video nicht gefunden' });
-  if (video.user_id !== req.userId) return res.status(403).json({ error: 'Keine Berechtigung' });
+  if (!mayEdit(video, req)) return res.status(403).json({ error: 'Keine Berechtigung' });
 
   if (video.filename) {
     const filePath = path.join(VIDEOS_DIR, video.filename);
@@ -611,7 +636,8 @@ app.delete('/api/videos/:id', requireRole('editor'), (req, res) => {
   const hlsPath = path.join(HLS_DIR, req.params.id);
   if (fs.existsSync(hlsPath)) fs.rmSync(hlsPath, { recursive: true, force: true });
 
-  deleteVideo(req.params.id, req.userId);
+  // Die Berechtigung ist oben schon geprüft — hier nicht nochmal einschränken.
+  deleteVideo(req.params.id);
   publishEvent('videos', { reason: 'delete', id: req.params.id });
   res.json({ success: true });
 });

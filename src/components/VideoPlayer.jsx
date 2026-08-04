@@ -1,14 +1,22 @@
 import React, { useRef, useState, useEffect } from 'react';
 import Plyr from 'plyr';
 import VideoCard from './VideoCard';
+import EditVideoModal from './EditVideoModal';
 import SectionTitle from './ui/SectionTitle';
 import Icon from './ui/Icon';
-import { formatDate, formatTimeAgo } from '../utils/formatters';
+import { formatDate, formatTimeAgo, formatViews } from '../utils/formatters';
 import { categoryLabel } from '../constants/categories';
 
 export default function VideoPlayer({
-  video, allVideos, onSelectVideo, onBack, onOpenChannel, authToken,
+  video, allVideos, onSelectVideo, onBack, onOpenChannel, authToken, currentUser, onVideoUpdated,
 }) {
+  const [bearbeiten, setBearbeiten] = useState(false);
+
+  // Dieselbe Regel wie im Server: die hochladende Person oder die Verwaltung.
+  const darfBearbeiten = !!currentUser
+    && (currentUser.role === 'editor' || currentUser.role === 'admin')
+    && (video.user_id === currentUser.id || currentUser.role === 'admin');
+
   const videoRef = useRef(null);
   const playerRef = useRef(null);
 
@@ -118,7 +126,7 @@ export default function VideoPlayer({
   }, [hlsSrc, progressiveUrl]);
 
   const handleCopyLink = () => {
-    navigator.clipboard.writeText(`${window.location.origin}/#watch=${video.id}`);
+    navigator.clipboard.writeText(`${window.location.origin}/video/${video.id}`);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2500);
   };
@@ -170,7 +178,7 @@ export default function VideoPlayer({
             <div className="b-meta-line" style={{ marginTop: 'var(--space-3xs)' }}>
               <span className="b-meta-line__item">{formatDate(video.createdAt || video.created_at)}</span>
               <span className="b-meta-line__item">{categoryLabel(video.category)}</span>
-              <span className="b-meta-line__item">{video.views || 0} Aufrufe</span>
+              <span className="b-meta-line__item">{formatViews(video.views)}</span>
             </div>
           </div>
 
@@ -200,6 +208,12 @@ export default function VideoPlayer({
             </div>
 
             <div className="b-row">
+              {darfBearbeiten && (
+                <button type="button" className="b-button b-button--secondary b-button--s"
+                  onClick={() => setBearbeiten(true)}>
+                  Bearbeiten
+                </button>
+              )}
               {authToken && (
                 <button type="button" className="b-button b-button--ghost b-button--s"
                   onClick={handleLike} disabled={liked}>
@@ -248,6 +262,15 @@ export default function VideoPlayer({
           )}
         </aside>
       </div>
+
+      {bearbeiten && (
+        <EditVideoModal
+          video={video}
+          authToken={authToken}
+          onClose={() => setBearbeiten(false)}
+          onSaved={onVideoUpdated}
+        />
+      )}
     </div>
   );
 }

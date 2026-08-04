@@ -13,15 +13,15 @@ export function formatDuration(seconds) {
   return `${mins}:${pad(secs)}`;
 }
 
+/**
+ * „1 Aufruf" statt „1 Aufrufe" — und deutsche Tausenderpunkte statt der
+ * englischen K-Abkürzung, die auf einer deutschen Vereinsseite fremd wirkt.
+ */
 export function formatViews(views) {
-  if (!views) return '0 Aufrufe';
-  if (views >= 1000000) {
-    return `${(views / 1000000).toFixed(1)} Mio. Aufrufe`;
-  }
-  if (views >= 1000) {
-    return `${(views / 1000).toFixed(1)}K Aufrufe`;
-  }
-  return `${views} Aufrufe`;
+  const n = Number(views) || 0;
+  if (n === 1) return '1 Aufruf';
+  if (n >= 1000000) return `${(n / 1000000).toLocaleString('de-DE', { maximumFractionDigits: 1 })} Mio. Aufrufe`;
+  return `${n.toLocaleString('de-DE')} Aufrufe`;
 }
 
 export function formatTimeAgo(dateString) {
